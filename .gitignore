@@ -1,0 +1,39 @@
+# 工作区（临时文件，不进 git）
+workspace/
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# Go
+backend/bin/
+backend/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 前端构建产物
+frontend/admin/dist/
+frontend/landing/dist/
+frontend/admin/node_modules/
+frontend/landing/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# IP 数据库（大文件，单独下载）
+backend/pkg/ipdb/*.xdb
