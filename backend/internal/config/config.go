@@ -4,16 +4,21 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"time"
 )
 
 type Config struct {
 	AppEnv        string
-	HTTPAddr     string
-	LogLevel     slog.Level
-	MySQLDSN     string
-	RedisAddr    string
+	HTTPAddr      string
+	LogLevel      slog.Level
+	MySQLDSN      string
+	RedisAddr     string
 	RedisPassword string
-	RedisDB      int
+	RedisDB       int
+	AuthDisabled  bool
+	LogtoIssuer   string
+	LogtoAudience string
+	LogtoJWKSURL  string
 }
 
 func Load() Config {
@@ -25,6 +30,10 @@ func Load() Config {
 		RedisAddr:     envString("REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword: envString("REDIS_PASSWORD", ""),
 		RedisDB:       envInt("REDIS_DB", 0),
+		AuthDisabled:  envBool("AUTH_DISABLED", false),
+		LogtoIssuer:   envString("LOGTO_ISSUER", ""),
+		LogtoAudience: envString("LOGTO_AUDIENCE", ""),
+		LogtoJWKSURL:  envString("LOGTO_JWKS_URL", ""),
 	}
 }
 
@@ -48,6 +57,21 @@ func envInt(key string, fallback int) int {
 	return parsed
 }
 
+func envBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	switch value {
+	case "1", "true", "TRUE", "yes", "YES":
+		return true
+	case "0", "false", "FALSE", "no", "NO":
+		return false
+	default:
+		return fallback
+	}
+}
+
 func envLogLevel(key string, fallback slog.Level) slog.Level {
 	switch os.Getenv(key) {
 	case "debug":
@@ -61,4 +85,8 @@ func envLogLevel(key string, fallback slog.Level) slog.Level {
 	default:
 		return fallback
 	}
+}
+
+func (c Config) Now() time.Time {
+	return time.Now().UTC()
 }

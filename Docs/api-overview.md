@@ -144,6 +144,42 @@ POST /api/v1/links
 }
 ```
 
+### 创建渠道码
+
+```json
+POST /api/v1/links
+{
+  "type": "channel",
+  "code": "wechat-a",
+  "entry_domain_id": 1,
+  "target_url": "https://example.com/page",
+  "title": "微信渠道 A",
+  "channel": {
+    "utm_source": "wechat",
+    "utm_medium": "social",
+    "utm_campaign": "spring2026",
+    "utm_content": "poster_a"
+  }
+}
+```
+
+### 创建落地页
+
+```json
+POST /api/v1/landing-pages
+{
+  "template": "liveqr",
+  "title": "扫码加入交流群",
+  "domain_id": 3,
+  "content": {
+    "headline": "扫码加入交流群",
+    "subtext": "群满自动切换，永久有效",
+    "footer_text": "长按识别二维码",
+    "theme_color": "#1677ff"
+  }
+}
+```
+
 ### 创建群活码
 
 ```json

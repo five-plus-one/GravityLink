@@ -13,6 +13,7 @@ import (
 	"gravitylink/backend/internal/config"
 	"gravitylink/backend/internal/database"
 	"gravitylink/backend/internal/router"
+	"gravitylink/backend/internal/worker"
 )
 
 func main() {
@@ -44,6 +45,9 @@ func main() {
 		Redis:  redisClient,
 		Logger: logger,
 	})
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	go worker.NewAccessLogConsumer(db, redisClient, logger).Start(workerCtx)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

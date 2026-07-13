@@ -7,7 +7,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"gravitylink/backend/internal/cache"
 	"gravitylink/backend/internal/config"
+	"gravitylink/backend/internal/middleware"
+	"gravitylink/backend/internal/service"
 )
 
 type Dependencies struct {
@@ -25,8 +28,29 @@ func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 
+	domainCache := service.NewDomainCache(deps.DB)
+	if err := domainCache.Load(); err != nil {
+		deps.Logger.Warn("load domain cache failed", "error", err)
+	}
+	routingService := service.NewRoutingService(deps.DB, deps.Redis)
+	linkService := service.NewLinkService(deps.DB, cache.NewLinkCache(deps.Redis), routingService)
+	domainService := service.NewDomainService(deps.DB, domainCache)
+	landingService := service.NewLandingService(deps.DB, routingService)
+	accessRecorder := service.NewAccessRecorder(deps.Redis)
+
 	api := engine.Group("/api/v1")
 	registerHealthRoutes(api, deps)
+
+	protectedAPI := api.Group("")
+	protectedAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger))
+	registerLinkRoutes(protectedAPI, linkService)
+	registerLandingRoutes(protectedAPI, landingService)
+
+	adminAPI := engine.Group("/api/admin")
+	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger), middleware.RequireRole("admin"))
+	registerDomainRoutes(adminAPI, domainService)
+
+	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, accessRecorder)
 
 	return engine
 }

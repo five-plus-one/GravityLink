@@ -10,6 +10,7 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ugravitylink", "-pgravitylink"]
       interval: 10s
@@ -37,6 +38,7 @@ services:
       MYSQL_DSN: gravitylink:gravitylink@tcp(mysql:3306)/gravitylink?charset=utf8mb4&parseTime=True&loc=Local
       REDIS_ADDR: redis:6379
       REDIS_DB: 0
+      AUTH_DISABLED: "true"
     ports:
       - "8080:8080"
     depends_on:
