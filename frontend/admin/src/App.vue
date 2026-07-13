@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import * as echarts from 'echarts/core';
+import { BarChart, LineChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import {
   clearToken,
   createDomain,
@@ -22,12 +26,16 @@ import {
   type SummaryStats,
 } from './api';
 
+echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+
 const links = ref<LinkItem[]>([]);
 const domains = ref<DomainItem[]>([]);
 const landingPages = ref<LandingPageItem[]>([]);
 const summary = ref<SummaryStats | null>(null);
 const dailyStats = ref<DailyPoint[]>([]);
 const hourlyStats = ref<HourlyPoint[]>([]);
+const dailyChartEl = ref<HTMLDivElement | null>(null);
+const hourlyChartEl = ref<HTMLDivElement | null>(null);
 const loading = ref(false);
 const error = ref('');
 const tokenDraft = ref(getToken());
@@ -259,6 +267,8 @@ async function refreshStats() {
     summary.value = summaryData;
     dailyStats.value = dailyData;
     hourlyStats.value = hourlyData;
+    await nextTick();
+    renderCharts();
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败';
   } finally {
@@ -266,9 +276,31 @@ async function refreshStats() {
   }
 }
 
-function barWidth(value: number, values: number[]): string {
-  const max = Math.max(...values, 1);
-  return `${Math.max(4, (value / max) * 100)}%`;
+function renderCharts() {
+  if (dailyChartEl.value) {
+    const chart = echarts.init(dailyChartEl.value);
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 36, right: 18, top: 24, bottom: 32 },
+      xAxis: { type: 'category', data: dailyStats.value.map((point) => point.date) },
+      yAxis: { type: 'value' },
+      series: [
+        { name: 'PV', type: 'line', smooth: true, data: dailyStats.value.map((point) => point.pv) },
+        { name: 'UV', type: 'line', smooth: true, data: dailyStats.value.map((point) => point.uv) },
+      ],
+    });
+  }
+
+  if (hourlyChartEl.value) {
+    const chart = echarts.init(hourlyChartEl.value);
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 36, right: 18, top: 24, bottom: 32 },
+      xAxis: { type: 'category', data: hourlyStats.value.map((point) => `${point.hour}:00`) },
+      yAxis: { type: 'value' },
+      series: [{ name: 'PV', type: 'bar', data: hourlyStats.value.map((point) => point.pv) }],
+    });
+  }
 }
 </script>
 
@@ -567,19 +599,11 @@ function barWidth(value: number, values: number[]): string {
           </div>
           <section class="mini-chart">
             <h2>近 30 天 PV</h2>
-            <div v-for="point in dailyStats" :key="point.date" class="bar-row">
-              <span>{{ point.date }}</span>
-              <div><i :style="{ width: barWidth(point.pv, dailyStats.map((item) => item.pv)) }"></i></div>
-              <strong>{{ point.pv }}</strong>
-            </div>
+            <div ref="dailyChartEl" class="chart"></div>
           </section>
           <section class="mini-chart">
             <h2>小时分布</h2>
-            <div v-for="point in hourlyStats" :key="point.hour" class="bar-row">
-              <span>{{ point.hour }}:00</span>
-              <div><i :style="{ width: barWidth(point.pv, hourlyStats.map((item) => item.pv)) }"></i></div>
-              <strong>{{ point.pv }}</strong>
-            </div>
+            <div ref="hourlyChartEl" class="chart"></div>
           </section>
         </div>
       </section>

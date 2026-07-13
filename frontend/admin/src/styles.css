@@ -347,30 +347,11 @@ th {
   gap: 8px;
 }
 
-.bar-row {
-  display: grid;
-  grid-template-columns: 92px 1fr 52px;
-  gap: 10px;
-  align-items: center;
-  font-size: 13px;
-}
-
-.bar-row div {
-  height: 10px;
-  border-radius: 999px;
-  background: #edf3f5;
-  overflow: hidden;
-}
-
-.bar-row i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: #188d7c;
-}
-
-.bar-row strong {
-  text-align: right;
+.chart {
+  width: 100%;
+  height: 260px;
+  border: 1px solid #e2eaed;
+  border-radius: 8px;
 }
 
 @media (max-width: 860px) {
