@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS access_logs (
     KEY idx_visited_at (visited_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS access_logs_archive LIKE access_logs;
+
 CREATE TABLE IF NOT EXISTS stat_daily (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     link_id     BIGINT UNSIGNED NOT NULL,

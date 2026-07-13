@@ -85,6 +85,25 @@ export interface CreateLandingPagePayload {
   content: Record<string, unknown>;
 }
 
+export interface SummaryStats {
+  total_pv: number;
+  total_uv: number;
+  today_pv: number;
+  today_uv: number;
+  yesterday_pv: number;
+}
+
+export interface DailyPoint {
+  date: string;
+  pv: number;
+  uv: number;
+}
+
+export interface HourlyPoint {
+  hour: number;
+  pv: number;
+}
+
 const tokenKey = 'gravitylink_access_token';
 
 export function getToken(): string {
@@ -136,6 +155,18 @@ export async function createLandingPage(payload: CreateLandingPagePayload): Prom
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function getSummaryStats(linkId: number): Promise<SummaryStats> {
+  return request<SummaryStats>(`/api/v1/stats/${linkId}/summary`);
+}
+
+export async function getDailyStats(linkId: number): Promise<DailyPoint[]> {
+  return request<DailyPoint[]>(`/api/v1/stats/${linkId}/daily`);
+}
+
+export async function getHourlyStats(linkId: number): Promise<HourlyPoint[]> {
+  return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly`);
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -6,6 +6,9 @@ import {
   createLandingPage,
   createLink,
   deleteDomain,
+  getDailyStats,
+  getHourlyStats,
+  getSummaryStats,
   getToken,
   listDomains,
   listLandingPages,
@@ -14,11 +17,17 @@ import {
   type DomainItem,
   type LandingPageItem,
   type LinkItem,
+  type DailyPoint,
+  type HourlyPoint,
+  type SummaryStats,
 } from './api';
 
 const links = ref<LinkItem[]>([]);
 const domains = ref<DomainItem[]>([]);
 const landingPages = ref<LandingPageItem[]>([]);
+const summary = ref<SummaryStats | null>(null);
+const dailyStats = ref<DailyPoint[]>([]);
+const hourlyStats = ref<HourlyPoint[]>([]);
 const loading = ref(false);
 const error = ref('');
 const tokenDraft = ref(getToken());
@@ -54,6 +63,10 @@ const landingForm = reactive({
   subtext: '',
   footerText: '',
   themeColor: '#1677ff',
+});
+
+const statsForm = reactive({
+  linkId: 1,
 });
 
 const activeLinks = computed(() => links.value.filter((link) => link.Status === 'active').length);
@@ -232,6 +245,30 @@ async function removeDomain(id: number) {
   } catch (err) {
     error.value = err instanceof Error ? err.message : '删除失败';
   }
+}
+
+async function refreshStats() {
+  loading.value = true;
+  error.value = '';
+  try {
+    const [summaryData, dailyData, hourlyData] = await Promise.all([
+      getSummaryStats(statsForm.linkId),
+      getDailyStats(statsForm.linkId),
+      getHourlyStats(statsForm.linkId),
+    ]);
+    summary.value = summaryData;
+    dailyStats.value = dailyData;
+    hourlyStats.value = hourlyData;
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载失败';
+  } finally {
+    loading.value = false;
+  }
+}
+
+function barWidth(value: number, values: number[]): string {
+  const max = Math.max(...values, 1);
+  return `${Math.max(4, (value / max) * 100)}%`;
 }
 </script>
 
@@ -511,8 +548,40 @@ async function removeDomain(id: number) {
       </section>
 
       <section v-else class="panel placeholder">
-        <h2>统计</h2>
-        <p>Phase 3 将接入多维度聚合查询与图表。</p>
+        <div class="table-head">
+          <h2>统计</h2>
+          <div class="stats-query">
+            <input v-model.number="statsForm.linkId" min="1" type="number" />
+            <button class="ghost" :disabled="loading" @click="refreshStats">
+              {{ loading ? '加载中' : '查询' }}
+            </button>
+          </div>
+        </div>
+        <div class="stats-body">
+          <p v-if="error" class="error">{{ error }}</p>
+          <div v-if="summary" class="metric-grid">
+            <div class="metric"><span>总 PV</span><strong>{{ summary.total_pv }}</strong></div>
+            <div class="metric"><span>总 UV</span><strong>{{ summary.total_uv }}</strong></div>
+            <div class="metric"><span>今日 PV</span><strong>{{ summary.today_pv }}</strong></div>
+            <div class="metric"><span>今日 UV</span><strong>{{ summary.today_uv }}</strong></div>
+          </div>
+          <section class="mini-chart">
+            <h2>近 30 天 PV</h2>
+            <div v-for="point in dailyStats" :key="point.date" class="bar-row">
+              <span>{{ point.date }}</span>
+              <div><i :style="{ width: barWidth(point.pv, dailyStats.map((item) => item.pv)) }"></i></div>
+              <strong>{{ point.pv }}</strong>
+            </div>
+          </section>
+          <section class="mini-chart">
+            <h2>小时分布</h2>
+            <div v-for="point in hourlyStats" :key="point.hour" class="bar-row">
+              <span>{{ point.hour }}:00</span>
+              <div><i :style="{ width: barWidth(point.pv, hourlyStats.map((item) => item.pv)) }"></i></div>
+              <strong>{{ point.pv }}</strong>
+            </div>
+          </section>
+        </div>
       </section>
     </section>
   </main>

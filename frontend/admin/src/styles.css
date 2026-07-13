@@ -295,12 +295,82 @@ th {
 }
 
 .placeholder {
-  padding: 20px;
+  overflow: hidden;
 }
 
 .placeholder p {
   margin-top: 8px;
   color: #62737a;
+}
+
+.stats-query {
+  display: flex;
+  gap: 8px;
+}
+
+.stats-query input {
+  width: 120px;
+}
+
+.stats-body {
+  padding: 16px;
+  display: grid;
+  gap: 18px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  border: 1px solid #e2eaed;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.metric span {
+  display: block;
+  color: #60727a;
+  font-size: 12px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.mini-chart {
+  display: grid;
+  gap: 8px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 52px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.bar-row div {
+  height: 10px;
+  border-radius: 999px;
+  background: #edf3f5;
+  overflow: hidden;
+}
+
+.bar-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #188d7c;
+}
+
+.bar-row strong {
+  text-align: right;
 }
 
 @media (max-width: 860px) {
@@ -328,5 +398,9 @@ th {
 
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

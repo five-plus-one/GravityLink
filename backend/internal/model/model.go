@@ -137,3 +137,39 @@ type RoutingTarget struct {
 	CreatedAt    time.Time `gorm:"not null"`
 	UpdatedAt    time.Time `gorm:"not null"`
 }
+
+type StatDaily struct {
+	ID       uint64    `gorm:"primaryKey;autoIncrement"`
+	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date"`
+	StatDate time.Time `gorm:"type:date;not null;uniqueIndex:uk_link_date"`
+	PV       uint64    `gorm:"column:pv;not null;default:0"`
+	UV       uint64    `gorm:"column:uv;not null;default:0"`
+	IPCount  uint64    `gorm:"column:ip_count;not null;default:0"`
+}
+
+type StatHourly struct {
+	ID       uint64    `gorm:"primaryKey;autoIncrement"`
+	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date_hour"`
+	StatDate time.Time `gorm:"type:date;not null;uniqueIndex:uk_link_date_hour"`
+	StatHour uint8     `gorm:"not null;uniqueIndex:uk_link_date_hour"`
+	PV       uint64    `gorm:"column:pv;not null;default:0"`
+}
+
+type StatGeo struct {
+	ID       uint64    `gorm:"primaryKey;autoIncrement"`
+	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date_geo"`
+	StatDate time.Time `gorm:"type:date;not null;uniqueIndex:uk_link_date_geo"`
+	Country  string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_geo"`
+	Province string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_geo"`
+	PV       uint64    `gorm:"column:pv;not null;default:0"`
+}
+
+type StatDevice struct {
+	ID       uint64    `gorm:"primaryKey;autoIncrement"`
+	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date_device"`
+	StatDate time.Time `gorm:"type:date;not null;uniqueIndex:uk_link_date_device"`
+	Device   string    `gorm:"size:32;not null;default:'';uniqueIndex:uk_link_date_device"`
+	OS       string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_device"`
+	Browser  string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_device"`
+	PV       uint64    `gorm:"column:pv;not null;default:0"`
+}

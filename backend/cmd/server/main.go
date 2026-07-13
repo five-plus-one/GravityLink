@@ -48,6 +48,7 @@ func main() {
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	defer stopWorkers()
 	go worker.NewAccessLogConsumer(db, redisClient, logger).Start(workerCtx)
+	go worker.NewLogArchiver(db, logger).Start(workerCtx)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
