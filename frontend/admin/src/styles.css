@@ -1,0 +1,332 @@
+:root {
+  color: #172026;
+  background: #f4f7f8;
+  font-family:
+    Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 232px 1fr;
+}
+
+.sidebar {
+  background: #132128;
+  color: #f7fbfc;
+  padding: 24px 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #42c2a9;
+  color: #09211c;
+  font-weight: 800;
+}
+
+.brand strong,
+.brand small {
+  display: block;
+}
+
+.brand small {
+  color: #9ab0b8;
+  margin-top: 2px;
+}
+
+.nav {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-item {
+  border: 0;
+  border-radius: 6px;
+  color: #c7d5da;
+  background: transparent;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item.active,
+.nav-item:hover {
+  background: #20333b;
+  color: #ffffff;
+}
+
+.workspace {
+  padding: 26px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: 16px;
+}
+
+.topbar p {
+  color: #62737a;
+  margin-top: 6px;
+}
+
+.auth-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-box input {
+  width: min(38vw, 360px);
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #dbe4e7;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(16, 30, 36, 0.04);
+}
+
+.editor {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #405158;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cfdce1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: #172026;
+}
+
+textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #98ded1;
+  border-color: #34ad98;
+}
+
+button {
+  min-height: 38px;
+  border: 1px solid #c9d8dc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172026;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary {
+  border-color: #188d7c;
+  background: #188d7c;
+  color: #ffffff;
+}
+
+.ghost {
+  background: #f7fafb;
+}
+
+.danger {
+  color: #b42318;
+}
+
+.error {
+  color: #b42318;
+  font-size: 13px;
+}
+
+.utm-grid {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e2eaed;
+  border-radius: 8px;
+  background: #f8fbfc;
+}
+
+.table-panel {
+  min-width: 0;
+}
+
+.table-head {
+  min-height: 58px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e2eaed;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef3f5;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+th {
+  color: #61747c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-weight: 700;
+}
+
+.target {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status {
+  display: inline-flex;
+  min-width: 66px;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #edf3f5;
+  color: #4d6067;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status.active {
+  background: #dff7ee;
+  color: #10735d;
+}
+
+.status.disabled,
+.status.expired {
+  background: #fdeceb;
+  color: #b42318;
+}
+
+.empty {
+  color: #7a8c93;
+  text-align: center;
+}
+
+.placeholder {
+  padding: 20px;
+}
+
+.placeholder p {
+  margin-top: 8px;
+  color: #62737a;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    padding: 14px;
+  }
+
+  .nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .topbar,
+  .auth-box {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auth-box input {
+    width: 100%;
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -32,4 +32,4 @@
 - **Phase 3**：统计看板（多维聚合、ECharts 图表）
 - **Phase 4**：开源收尾（迁移工具、docker-compose、README）
 
-当前阶段：**Phase 1 已完成，Phase 2 待启动**，见 [workspace/status.md](../workspace/status.md)
+当前阶段：**Phase 2 已完成，Phase 3 待启动**，见 [workspace/status.md](../workspace/status.md)
