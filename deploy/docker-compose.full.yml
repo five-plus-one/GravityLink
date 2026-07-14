@@ -1,0 +1,71 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gravitylink}
+      MYSQL_USER: ${MYSQL_USER:-gravitylink}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER:-gravitylink}", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  gravitylink:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      MYSQL_DSN: ${MYSQL_DSN}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      LOGTO_ISSUER: ${LOGTO_ISSUER}
+      LOGTO_AUDIENCE: ${LOGTO_AUDIENCE}
+      LOGTO_JWKS_URL: ${LOGTO_JWKS_URL:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ADMIN_HOST: ${ADMIN_HOST}
+      ENTRY_HOST: ${ENTRY_HOST}
+      TRANSIT_HOST: ${TRANSIT_HOST}
+      LANDING_HOST: ${LANDING_HOST}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - gravitylink
+
+volumes:
+  mysql_data:
+  redis_data:

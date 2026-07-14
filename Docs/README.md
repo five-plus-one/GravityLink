@@ -10,6 +10,7 @@
 | [domain-routing.md](domain-routing.md) | 域名类型与请求路由分发设计 | ✅ 完成 |
 | [api-overview.md](api-overview.md) | API 设计规范与路由总览 | ✅ 完成 |
 | [phase-1-plan.md](phase-1-plan.md) | Phase 1 实施拆分、验收标准与风险 | ✅ 完成 |
+| [migration.md](migration.md) | 旧版数据迁移 CLI 使用说明 | ✅ 完成 |
 
 ## 功能模块规格
 
@@ -32,4 +33,4 @@
 - **Phase 3**：统计看板（多维聚合、ECharts 图表）
 - **Phase 4**：开源收尾（迁移工具、docker-compose、README）
 
-当前阶段：**Phase 3 已完成，Phase 4 待启动**，见 [workspace/status.md](../workspace/status.md)
+当前阶段：**Phase 4 已完成**，见 [workspace/status.md](../workspace/status.md)
