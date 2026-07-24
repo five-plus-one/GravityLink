@@ -14,7 +14,7 @@ import (
 
 func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *service.DomainCache, links *service.LinkService, landings *service.LandingService, recorder *service.AccessRecorder) {
 	public := engine.Group("/")
-	public.Use(middleware.HostRouter(domains))
+	public.Use(middleware.HostRouter(domains, deps.Config))
 	public.GET("/:code", dispatchByDomainType(deps, links, landings, recorder))
 }
 

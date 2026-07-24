@@ -2,25 +2,26 @@ services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: gravitylink_root
-      MYSQL_DATABASE: gravitylink
-      MYSQL_USER: gravitylink
-      MYSQL_PASSWORD: gravitylink
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-gravitylink_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gravitylink}
+      MYSQL_USER: ${MYSQL_USER:-gravitylink}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gravitylink}
     ports:
-      - "3306:3306"
+      - "${MYSQL_HOST_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ugravitylink", "-pgravitylink"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -31,16 +32,31 @@ services:
 
   gravitylink:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: backend/Dockerfile
     environment:
-      APP_ENV: development
-      HTTP_ADDR: :8080
-      MYSQL_DSN: gravitylink:gravitylink@tcp(mysql:3306)/gravitylink?charset=utf8mb4&parseTime=True&loc=Local
-      REDIS_ADDR: redis:6379
-      REDIS_DB: 0
-      AUTH_DISABLED: "true"
+      APP_ENV: ${APP_ENV:-development}
+      HTTP_ADDR: ${HTTP_ADDR:-:8080}
+      ADMIN_HTTP_ADDR: ${ADMIN_HTTP_ADDR:-:8081}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gravitylink}
+      MYSQL_USER: ${MYSQL_USER:-gravitylink}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gravitylink}
+      MYSQL_PARAMS: ${MYSQL_PARAMS:-charset=utf8mb4&parseTime=True&loc=Local}
+      MYSQL_DSN: ${MYSQL_DSN:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_ADDR: ${REDIS_ADDR:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      AUTH_DISABLED: ${AUTH_DISABLED:-true}
+      LOGTO_ISSUER: ${LOGTO_ISSUER:-}
+      LOGTO_AUDIENCE: ${LOGTO_AUDIENCE:-}
+      LOGTO_JWKS_URL: ${LOGTO_JWKS_URL:-}
     ports:
-      - "8080:8080"
+      - "${APP_HOST_PORT:-8080}:8080"
+      - "${ADMIN_HOST_PORT:-8081}:8081"
     depends_on:
       mysql:
         condition: service_healthy

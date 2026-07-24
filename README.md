@@ -25,6 +25,23 @@ English overview is included below.
 
 开发环境默认开启 `AUTH_DISABLED=true`，方便本地调试。
 
+如果本机 `3306`、`6379` 或 `8080` 已被占用，可以用环境变量换端口：
+
+```bash
+MYSQL_PORT=13306 REDIS_PORT=16379 APP_PORT=18080 docker compose -f deploy/docker-compose.yml up --build
+```
+
+Windows PowerShell：
+
+```powershell
+$env:MYSQL_PORT="13306"
+$env:REDIS_PORT="16379"
+$env:APP_PORT="18080"
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+默认端口未占用时：
+
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
 ```
@@ -42,6 +59,27 @@ cd frontend/admin
 npm install
 npm run dev
 ```
+
+如果后端 API 不是 `8080`，启动前端时指定代理目标：
+
+```powershell
+$env:VITE_API_PROXY_TARGET="http://127.0.0.1:18080"
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+打开：
+
+- 管理端：`http://127.0.0.1:5173`
+- 健康检查：`http://127.0.0.1:18080/api/v1/health`
+
+### 访问短链接
+
+管理端只是后台，不应对公网用户开放。公网用户访问的是后端承接的入口/落地域名：
+
+- 生产环境：将 `go.example.com`、`page.example.com` 等域名解析到 Nginx，再在管理端把它们分别配置为 `entry` / `landing`。用户访问 `https://go.example.com/{code}`，后端会直接 `302` 到目标 URL，或跳到 `https://page.example.com/{code}` 渲染落地页。
+- 本地开发：可以用 `curl -H "Host: go.demo.localhost" http://127.0.0.1:18080/demo` 验证 Host 路由；开发模式也允许直接访问 `http://127.0.0.1:18080/{code}` 作为入口域名兜底。
+
+落地页的公开样式和脚本由 Go 二进制内嵌并托管在 `/assets/landing/*`，不需要把管理端 Vue 应用暴露给用户。
 
 ## 开发验证
 

@@ -337,7 +337,7 @@ function renderCharts() {
           <p v-if="activeView === 'links'">{{ links.length }} 条记录，{{ activeLinks }} 条可访问</p>
           <p v-else-if="activeView === 'domains'">{{ domains.length }} 个域名配置</p>
           <p v-else-if="activeView === 'landing'">{{ landingPages.length }} 个页面</p>
-          <p v-else>统计看板将在 Phase 3 补齐</p>
+          <p v-else>按链接 ID 查看访问数据</p>
         </div>
         <div class="auth-box">
           <input v-model="tokenDraft" type="password" placeholder="Access token" />

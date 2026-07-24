@@ -55,6 +55,11 @@ func main() {
 		Handler:           engine,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	adminServer := &http.Server{
+		Addr:              cfg.AdminHTTPAddr,
+		Handler:           router.NewAdminFrontendHandler(engine),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	go func() {
 		logger.Info("gravitylink server starting", "addr", cfg.HTTPAddr)
@@ -63,6 +68,15 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+	if cfg.AdminHTTPAddr != "" {
+		go func() {
+			logger.Info("gravitylink admin frontend starting", "addr", cfg.AdminHTTPAddr)
+			if err := adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("admin frontend server failed", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -74,6 +88,12 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		logger.Error("http server shutdown failed", "error", err)
 		os.Exit(1)
+	}
+	if cfg.AdminHTTPAddr != "" {
+		if err := adminServer.Shutdown(ctx); err != nil {
+			logger.Error("admin frontend server shutdown failed", "error", err)
+			os.Exit(1)
+		}
 	}
 	logger.Info("gravitylink server stopped")
 }

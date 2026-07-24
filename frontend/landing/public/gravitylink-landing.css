@@ -1,0 +1,73 @@
+:root {
+  color: #172026;
+  background: #f5f8fa;
+  font-family:
+    "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(245, 248, 250, 0.94)),
+    #f5f8fa;
+}
+
+.landing-page {
+  width: min(92vw, 420px);
+  padding: 30px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #dde8ec;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(20, 35, 45, 0.1);
+}
+
+.landing-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin-bottom: 14px;
+}
+
+.landing-page h1 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.landing-page p {
+  margin: 0 0 20px;
+  color: #5f7178;
+  line-height: 1.65;
+}
+
+.landing-qr {
+  width: min(72vw, 260px);
+  height: auto;
+  border-radius: 8px;
+}
+
+.landing-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 6px;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.landing-footer {
+  margin-top: 16px;
+  color: #73858c;
+  font-size: 14px;
+}

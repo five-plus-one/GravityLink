@@ -52,6 +52,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger), middleware.RequireRole("admin"))
 	registerDomainRoutes(adminAPI, domainService)
 
+	registerAssetRoutes(engine)
 	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, accessRecorder)
 
 	return engine

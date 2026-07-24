@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 type Config struct {
 	AppEnv        string
 	HTTPAddr      string
+	AdminHTTPAddr string
 	LogLevel      slog.Level
 	MySQLDSN      string
 	RedisAddr     string
@@ -25,9 +27,10 @@ func Load() Config {
 	return Config{
 		AppEnv:        envString("APP_ENV", "development"),
 		HTTPAddr:      envString("HTTP_ADDR", ":8080"),
+		AdminHTTPAddr: envString("ADMIN_HTTP_ADDR", ":8081"),
 		LogLevel:      envLogLevel("LOG_LEVEL", slog.LevelInfo),
-		MySQLDSN:      envString("MYSQL_DSN", "gravitylink:gravitylink@tcp(127.0.0.1:3306)/gravitylink?charset=utf8mb4&parseTime=True&loc=Local"),
-		RedisAddr:     envString("REDIS_ADDR", "127.0.0.1:6379"),
+		MySQLDSN:      envMySQLDSN(),
+		RedisAddr:     envRedisAddr(),
 		RedisPassword: envString("REDIS_PASSWORD", ""),
 		RedisDB:       envInt("REDIS_DB", 0),
 		AuthDisabled:  envBool("AUTH_DISABLED", false),
@@ -35,6 +38,28 @@ func Load() Config {
 		LogtoAudience: envString("LOGTO_AUDIENCE", ""),
 		LogtoJWKSURL:  envString("LOGTO_JWKS_URL", ""),
 	}
+}
+
+func envMySQLDSN() string {
+	if dsn := os.Getenv("MYSQL_DSN"); dsn != "" {
+		return dsn
+	}
+
+	user := envString("MYSQL_USER", "gravitylink")
+	password := envString("MYSQL_PASSWORD", "gravitylink")
+	host := envString("MYSQL_HOST", "127.0.0.1")
+	port := envString("MYSQL_PORT", "3306")
+	database := envString("MYSQL_DATABASE", "gravitylink")
+	params := envString("MYSQL_PARAMS", "charset=utf8mb4&parseTime=True&loc=Local")
+
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", user, password, host, port, database, params)
+}
+
+func envRedisAddr() string {
+	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
+		return addr
+	}
+	return fmt.Sprintf("%s:%s", envString("REDIS_HOST", "127.0.0.1"), envString("REDIS_PORT", "6379"))
 }
 
 func envString(key string, fallback string) string {

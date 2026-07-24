@@ -30,13 +30,23 @@ services:
 
   gravitylink:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-production}
       HTTP_ADDR: ${HTTP_ADDR:-:8080}
-      MYSQL_DSN: ${MYSQL_DSN}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      ADMIN_HTTP_ADDR: ${ADMIN_HTTP_ADDR:-:8081}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gravitylink}
+      MYSQL_USER: ${MYSQL_USER:-gravitylink}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PARAMS: ${MYSQL_PARAMS:-charset=utf8mb4&parseTime=True&loc=Local}
+      MYSQL_DSN: ${MYSQL_DSN:-}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_ADDR: ${REDIS_ADDR:-}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       AUTH_DISABLED: ${AUTH_DISABLED:-false}
