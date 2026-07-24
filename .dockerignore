@@ -1,0 +1,6 @@
+.git
+workspace
+frontend/admin/node_modules
+frontend/admin/dist
+backend/tmp
+*.log

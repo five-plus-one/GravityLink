@@ -24,7 +24,8 @@ func NewAdminFrontendHandler(api http.Handler) http.Handler {
 
 		cleanPath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if cleanPath == "." {
-			cleanPath = "index.html"
+			serveAdminIndex(w, r, fileServer)
+			return
 		}
 
 		if info, err := fs.Stat(adminFS, cleanPath); err == nil && !info.IsDir() {
@@ -32,7 +33,16 @@ func NewAdminFrontendHandler(api http.Handler) http.Handler {
 			return
 		}
 
-		r.URL.Path = "/index.html"
-		fileServer.ServeHTTP(w, r)
+		serveAdminIndex(w, r, fileServer)
 	})
+}
+
+func serveAdminIndex(w http.ResponseWriter, _ *http.Request, _ http.Handler) {
+	indexHTML, err := fs.ReadFile(web.Assets, "admin/index.html")
+	if err != nil {
+		http.Error(w, "admin frontend not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(indexHTML)
 }

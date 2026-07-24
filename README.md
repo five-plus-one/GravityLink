@@ -25,34 +25,33 @@ English overview is included below.
 
 开发环境默认开启 `AUTH_DISABLED=true`，方便本地调试。
 
-如果本机 `3306`、`6379` 或 `8080` 已被占用，可以用环境变量换端口：
+基础版会启动 MySQL、Redis 和一个 GravityLink 应用容器。应用容器内部监听两个端口：
+
+- `8080`：后端 API / 公网短链入口 / 落地页
+- `8081`：管理端前端，且 `/api/*` 会转给同一个后端 handler
+
+默认启动：
 
 ```bash
-MYSQL_PORT=13306 REDIS_PORT=16379 APP_PORT=18080 docker compose -f deploy/docker-compose.yml up --build
+docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Windows PowerShell：
+打开：
+
+- 后端健康检查：`http://127.0.0.1:8080/api/v1/health`
+- 管理端前端：`http://127.0.0.1:8081`
+
+如果本机 `3306`、`6379`、`8080` 或 `8081` 已被占用，可以只换宿主机映射端口：
 
 ```powershell
-$env:MYSQL_PORT="13306"
-$env:REDIS_PORT="16379"
-$env:APP_PORT="18080"
+$env:MYSQL_HOST_PORT="13306"
+$env:REDIS_HOST_PORT="16379"
+$env:APP_HOST_PORT="18080"
+$env:ADMIN_HOST_PORT="18081"
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-默认端口未占用时：
-
-```bash
-docker compose -f deploy/docker-compose.yml up --build
-```
-
-服务默认监听：
-
-- API: `http://127.0.0.1:8080`
-- MySQL: `127.0.0.1:3306`
-- Redis: `127.0.0.1:6379`
-
-前端管理端：
+本地开发也可以单独跑 Vite 管理端：
 
 ```bash
 cd frontend/admin
@@ -71,6 +70,36 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 - 管理端：`http://127.0.0.1:5173`
 - 健康检查：`http://127.0.0.1:18080/api/v1/health`
+
+## 数据库与缓存配置
+
+推荐使用拆分环境变量，应用会自动拼接 MySQL DSN：
+
+```env
+MYSQL_HOST=mysql
+MYSQL_PORT=3306
+MYSQL_DATABASE=gravitylink
+MYSQL_USER=gravitylink
+MYSQL_PASSWORD=change-me
+MYSQL_PARAMS=charset=utf8mb4&parseTime=True&loc=Local
+```
+
+如果你使用云数据库、特殊参数或密码里包含特殊字符，可以直接提供完整 DSN 覆盖：
+
+```env
+MYSQL_DSN=gravitylink:change-me@tcp(mysql:3306)/gravitylink?charset=utf8mb4&parseTime=True&loc=Local
+```
+
+Redis 推荐拆分配置：
+
+```env
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+```
+
+也可以用 `REDIS_ADDR=redis:6379` 直接覆盖地址。`MYSQL_HOST_PORT` / `REDIS_HOST_PORT` 只控制 Docker 映射到宿主机的端口，不影响容器内应用连接数据库。
 
 ### 访问短链接
 
@@ -124,6 +153,12 @@ deploy/nginx/certs/privkey.pem
 
 ```bash
 docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env up --build -d
+```
+
+如果不需要 Nginx，只想用一个应用容器映射两个端口，使用基础 compose 并在 `deploy/.env` 中配置端口：
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up --build -d
 ```
 
 ## 旧版迁移
