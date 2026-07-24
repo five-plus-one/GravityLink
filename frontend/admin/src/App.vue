@@ -5,7 +5,6 @@ import { GridComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import {
-  clearToken,
   createDomain,
   createLandingPage,
   createLink,
@@ -13,11 +12,9 @@ import {
   getDailyStats,
   getHourlyStats,
   getSummaryStats,
-  getToken,
   listDomains,
   listLandingPages,
   listLinks,
-  setToken,
   type DomainItem,
   type LandingPageItem,
   type LinkItem,
@@ -25,6 +22,16 @@ import {
   type HourlyPoint,
   type SummaryStats,
 } from './api';
+import {
+  clearSession,
+  currentUser,
+  handleCallback,
+  loadAuthConfig,
+  login,
+  logout,
+  type AuthConfig,
+  type AuthUser,
+} from './auth';
 
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
@@ -38,7 +45,10 @@ const dailyChartEl = ref<HTMLDivElement | null>(null);
 const hourlyChartEl = ref<HTMLDivElement | null>(null);
 const loading = ref(false);
 const error = ref('');
-const tokenDraft = ref(getToken());
+const authLoading = ref(true);
+const authConfig = ref<AuthConfig | null>(null);
+const user = ref<AuthUser | null>(null);
+const authError = ref('');
 const activeView = ref<'links' | 'domains' | 'landing' | 'stats'>('links');
 
 const form = reactive({
@@ -91,11 +101,27 @@ const viewTitle = computed(() => {
   return '短链接';
 });
 
-onMounted(() => {
-  void refreshLinks();
-  void refreshDomains();
-  void refreshLandingPages();
+onMounted(async () => {
+  await boot();
 });
+
+async function boot() {
+  authLoading.value = true;
+  authError.value = '';
+  try {
+    const config = await loadAuthConfig();
+    authConfig.value = config;
+    await handleCallback(config);
+    user.value = currentUser(config);
+    if (user.value) {
+      await Promise.all([refreshLinks(), refreshDomains(), refreshLandingPages()]);
+    }
+  } catch (err) {
+    authError.value = err instanceof Error ? err.message : '登录初始化失败';
+  } finally {
+    authLoading.value = false;
+  }
+}
 
 async function refreshLinks() {
   loading.value = true;
@@ -189,16 +215,26 @@ async function submitLink() {
   }
 }
 
-function saveToken() {
-  setToken(tokenDraft.value.trim());
-  void refreshLinks();
-  void refreshDomains();
-  void refreshLandingPages();
+async function startLogin() {
+  if (!authConfig.value) {
+    authError.value = '登录配置未加载';
+    return;
+  }
+  try {
+    await login(authConfig.value);
+  } catch (err) {
+    authError.value = err instanceof Error ? err.message : '无法跳转登录';
+  }
 }
 
-function logout() {
-  clearToken();
-  tokenDraft.value = '';
+function logoutAdmin() {
+  const config = authConfig.value;
+  if (config) {
+    logout(config);
+  } else {
+    clearSession();
+  }
+  user.value = null;
   links.value = [];
   domains.value = [];
   landingPages.value = [];
@@ -305,7 +341,26 @@ function renderCharts() {
 </script>
 
 <template>
-  <main class="app-shell">
+  <main v-if="authLoading" class="login-shell">
+    <section class="login-panel">
+      <span class="brand-mark">G</span>
+      <h1>GravityLink Admin</h1>
+      <p>正在检查登录状态...</p>
+    </section>
+  </main>
+
+  <main v-else-if="!user" class="login-shell">
+    <section class="login-panel">
+      <span class="brand-mark">G</span>
+      <h1>GravityLink Admin</h1>
+      <p>请使用授权的 Logto 账号登录后继续。</p>
+      <button class="primary login-button" @click="startLogin">使用 Logto 登录</button>
+      <p v-if="authError" class="error">{{ authError }}</p>
+      <p v-if="authConfig?.auth_disabled" class="muted">开发模式已关闭鉴权，但当前会话未初始化。</p>
+    </section>
+  </main>
+
+  <main v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark">G</span>
@@ -339,10 +394,12 @@ function renderCharts() {
           <p v-else-if="activeView === 'landing'">{{ landingPages.length }} 个页面</p>
           <p v-else>按链接 ID 查看访问数据</p>
         </div>
-        <div class="auth-box">
-          <input v-model="tokenDraft" type="password" placeholder="Access token" />
-          <button @click="saveToken">保存</button>
-          <button class="ghost" @click="logout">清除</button>
+        <div class="user-box">
+          <div>
+            <strong>{{ user.username || user.email || user.subject }}</strong>
+            <small>{{ user.role }}</small>
+          </div>
+          <button class="ghost" @click="logoutAdmin">退出</button>
         </div>
       </header>
 

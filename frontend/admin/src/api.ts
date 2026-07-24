@@ -1,3 +1,5 @@
+import { getAccessToken } from './auth';
+
 export interface LinkItem {
   ID: number;
   Code: string;
@@ -104,20 +106,6 @@ export interface HourlyPoint {
   pv: number;
 }
 
-const tokenKey = 'gravitylink_access_token';
-
-export function getToken(): string {
-  return localStorage.getItem(tokenKey) ?? '';
-}
-
-export function setToken(token: string): void {
-  localStorage.setItem(tokenKey, token);
-}
-
-export function clearToken(): void {
-  localStorage.removeItem(tokenKey);
-}
-
 export async function listLinks(): Promise<LinkListData> {
   return request<LinkListData>('/api/v1/links');
 }
@@ -173,7 +161,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
 
-  const token = getToken();
+  const token = getAccessToken();
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }

@@ -52,8 +52,12 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       AUTH_DISABLED: ${AUTH_DISABLED:-true}
       LOGTO_ISSUER: ${LOGTO_ISSUER:-}
+      LOGTO_APP_ID: ${LOGTO_APP_ID:-}
       LOGTO_AUDIENCE: ${LOGTO_AUDIENCE:-}
       LOGTO_JWKS_URL: ${LOGTO_JWKS_URL:-}
+      LOGTO_SCOPES: ${LOGTO_SCOPES:-openid profile email}
+      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-}
+      ADMIN_ALLOWED_ROLES: ${ADMIN_ALLOWED_ROLES:-admin}
     ports:
       - "${APP_HOST_PORT:-8080}:8080"
       - "${ADMIN_HOST_PORT:-8081}:8081"

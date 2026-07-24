@@ -5,38 +5,47 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type Config struct {
-	AppEnv        string
-	HTTPAddr      string
-	AdminHTTPAddr string
-	LogLevel      slog.Level
-	MySQLDSN      string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-	AuthDisabled  bool
-	LogtoIssuer   string
-	LogtoAudience string
-	LogtoJWKSURL  string
+	AppEnv            string
+	HTTPAddr          string
+	AdminHTTPAddr     string
+	LogLevel          slog.Level
+	MySQLDSN          string
+	RedisAddr         string
+	RedisPassword     string
+	RedisDB           int
+	AuthDisabled      bool
+	LogtoIssuer       string
+	LogtoAppID        string
+	LogtoAudience     string
+	LogtoJWKSURL      string
+	LogtoScopes       string
+	AdminBaseURL      string
+	AdminAllowedRoles []string
 }
 
 func Load() Config {
 	return Config{
-		AppEnv:        envString("APP_ENV", "development"),
-		HTTPAddr:      envString("HTTP_ADDR", ":8080"),
-		AdminHTTPAddr: envString("ADMIN_HTTP_ADDR", ":8081"),
-		LogLevel:      envLogLevel("LOG_LEVEL", slog.LevelInfo),
-		MySQLDSN:      envMySQLDSN(),
-		RedisAddr:     envRedisAddr(),
-		RedisPassword: envString("REDIS_PASSWORD", ""),
-		RedisDB:       envInt("REDIS_DB", 0),
-		AuthDisabled:  envBool("AUTH_DISABLED", false),
-		LogtoIssuer:   envString("LOGTO_ISSUER", ""),
-		LogtoAudience: envString("LOGTO_AUDIENCE", ""),
-		LogtoJWKSURL:  envString("LOGTO_JWKS_URL", ""),
+		AppEnv:            envString("APP_ENV", "development"),
+		HTTPAddr:          envString("HTTP_ADDR", ":8080"),
+		AdminHTTPAddr:     envString("ADMIN_HTTP_ADDR", ":8081"),
+		LogLevel:          envLogLevel("LOG_LEVEL", slog.LevelInfo),
+		MySQLDSN:          envMySQLDSN(),
+		RedisAddr:         envRedisAddr(),
+		RedisPassword:     envString("REDIS_PASSWORD", ""),
+		RedisDB:           envInt("REDIS_DB", 0),
+		AuthDisabled:      envBool("AUTH_DISABLED", false),
+		LogtoIssuer:       envString("LOGTO_ISSUER", ""),
+		LogtoAppID:        envString("LOGTO_APP_ID", ""),
+		LogtoAudience:     envString("LOGTO_AUDIENCE", ""),
+		LogtoJWKSURL:      envString("LOGTO_JWKS_URL", ""),
+		LogtoScopes:       envString("LOGTO_SCOPES", "openid profile email"),
+		AdminBaseURL:      envString("ADMIN_BASE_URL", ""),
+		AdminAllowedRoles: envList("ADMIN_ALLOWED_ROLES", []string{"admin"}),
 	}
 }
 
@@ -95,6 +104,25 @@ func envBool(key string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func envList(key string, fallback []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	if len(result) == 0 {
+		return fallback
+	}
+	return result
 }
 
 func envLogLevel(key string, fallback slog.Level) slog.Level {

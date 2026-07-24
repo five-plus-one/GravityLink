@@ -101,6 +101,28 @@ REDIS_DB=0
 
 也可以用 `REDIS_ADDR=redis:6379` 直接覆盖地址。`MYSQL_HOST_PORT` / `REDIS_HOST_PORT` 只控制 Docker 映射到宿主机的端口，不影响容器内应用连接数据库。
 
+## Logto 登录配置
+
+管理端使用 Logto OIDC Authorization Code + PKCE 登录。生产环境至少配置：
+
+```env
+AUTH_DISABLED=false
+LOGTO_ISSUER=https://logto.example.com/oidc
+LOGTO_APP_ID=your-spa-app-id
+LOGTO_AUDIENCE=https://gravitylink.example.com/api
+ADMIN_BASE_URL=https://admin.example.com
+ADMIN_ALLOWED_ROLES=admin
+```
+
+Logto SPA 应用需要把回调地址加入允许列表：
+
+```text
+https://admin.example.com/auth/callback
+http://127.0.0.1:8081/auth/callback
+```
+
+开发环境可以保留 `AUTH_DISABLED=true`，管理端会进入开发模式；生产环境不应开启。
+
 ### 访问短链接
 
 管理端只是后台，不应对公网用户开放。公网用户访问的是后端承接的入口/落地域名：

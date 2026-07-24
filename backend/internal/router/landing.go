@@ -6,11 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gravitylink/backend/internal/config"
+	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/response"
 	"gravitylink/backend/internal/service"
 )
 
-func registerLandingRoutes(group *gin.RouterGroup, landings *service.LandingService) {
+func registerLandingRoutes(group *gin.RouterGroup, landings *service.LandingService, cfg config.Config) {
 	group.GET("/landing-pages", func(c *gin.Context) {
 		items, err := landings.List(c.Request.Context())
 		if err != nil {
@@ -20,7 +22,7 @@ func registerLandingRoutes(group *gin.RouterGroup, landings *service.LandingServ
 		response.OK(c, gin.H{"items": items, "total": len(items)})
 	})
 
-	group.POST("/landing-pages", func(c *gin.Context) {
+	group.POST("/landing-pages", middleware.RequireAnyRole(cfg.AdminAllowedRoles...), func(c *gin.Context) {
 		var input service.LandingInput
 		if err := c.ShouldBindJSON(&input); err != nil {
 			response.Error(c, http.StatusBadRequest, 4001, "invalid request body")

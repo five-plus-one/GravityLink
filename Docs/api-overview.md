@@ -45,9 +45,11 @@
 | 方法 | 路径 | 说明 |
 |-----|------|------|
 | GET | `/{code}` | 短链接跳转（入口域名处理） |
+| GET | `/` | 公网访问首页提示页 |
 | GET | `/page/{code}` | 落地页渲染（落地域名处理） |
 | GET | `/t/{code}` | 中转跳转（中转域名处理） |
 | GET | `/api/v1/health` | 健康检查 |
+| GET | `/api/v1/auth/config` | 管理端 Logto 登录运行时配置 |
 
 ### 用户 API（需登录，`/api/v1/`）
 
@@ -56,10 +58,10 @@
 | 方法 | 路径 | 说明 |
 |-----|------|------|
 | GET | `/api/v1/links` | 链接列表（支持按 type 过滤） |
-| POST | `/api/v1/links` | 创建链接（short / channel / liveqr） |
+| POST | `/api/v1/links` | 创建链接（short / channel / liveqr，需 Admin） |
 | GET | `/api/v1/links/:id` | 链接详情 |
-| PUT | `/api/v1/links/:id` | 更新链接 |
-| DELETE | `/api/v1/links/:id` | 删除链接（软删除） |
+| PUT | `/api/v1/links/:id` | 更新链接（需 Admin） |
+| DELETE | `/api/v1/links/:id` | 删除链接（软删除，需 Admin） |
 | POST | `/api/v1/links/:id/disable` | 禁用链接 |
 | POST | `/api/v1/links/:id/enable` | 启用链接 |
 
@@ -78,7 +80,7 @@
 | 方法 | 路径 | 说明 |
 |-----|------|------|
 | GET | `/api/v1/landing-pages` | 落地页列表 |
-| POST | `/api/v1/landing-pages` | 创建落地页 |
+| POST | `/api/v1/landing-pages` | 创建落地页（需 Admin） |
 | GET | `/api/v1/landing-pages/:id` | 落地页详情 |
 | PUT | `/api/v1/landing-pages/:id` | 更新落地页 |
 | DELETE | `/api/v1/landing-pages/:id` | 删除落地页 |
@@ -118,6 +120,12 @@
 |-----|------|------|
 | GET | `/api/admin/configs` | 获取系统配置 |
 | PUT | `/api/admin/configs` | 更新系统配置 |
+
+### 认证与公网提示页
+
+管理端不再手工录入 access token。前端启动后先读取 `/api/v1/auth/config`，获取 Logto OIDC 配置并发起 Authorization Code + PKCE 登录；登录成功后前端保存 Logto 返回的 access token，并在后续 API 请求中自动携带 `Authorization: Bearer <access_token>`。
+
+公网入口域名访问 `/` 或不存在的短码时，后端返回统一 HTML 提示页。提示页内容来自 `system_configs`，未配置时使用默认文案；不存在、禁用、过期链接不会暴露内部错误。
 
 #### 全局统计（管理端看板）
 

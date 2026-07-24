@@ -51,8 +51,12 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       AUTH_DISABLED: ${AUTH_DISABLED:-false}
       LOGTO_ISSUER: ${LOGTO_ISSUER}
+      LOGTO_APP_ID: ${LOGTO_APP_ID}
       LOGTO_AUDIENCE: ${LOGTO_AUDIENCE}
       LOGTO_JWKS_URL: ${LOGTO_JWKS_URL:-}
+      LOGTO_SCOPES: ${LOGTO_SCOPES:-openid profile email}
+      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-https://${ADMIN_HOST}}
+      ADMIN_ALLOWED_ROLES: ${ADMIN_ALLOWED_ROLES:-admin}
     depends_on:
       mysql:
         condition: service_healthy

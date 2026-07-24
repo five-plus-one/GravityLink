@@ -7,11 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gravitylink/backend/internal/config"
+	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/response"
 	"gravitylink/backend/internal/service"
 )
 
-func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService) {
+func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService, cfg config.Config) {
 	group.GET("/links", func(c *gin.Context) {
 		items, err := links.List(c.Request.Context(), c.Query("type"))
 		if err != nil {
@@ -21,7 +23,9 @@ func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService) {
 		response.OK(c, gin.H{"items": items, "total": len(items)})
 	})
 
-	group.POST("/links", func(c *gin.Context) {
+	adminOnly := middleware.RequireAnyRole(cfg.AdminAllowedRoles...)
+
+	group.POST("/links", adminOnly, func(c *gin.Context) {
 		var input service.CreateLinkInput
 		if err := c.ShouldBindJSON(&input); err != nil {
 			response.Error(c, http.StatusBadRequest, 4001, "invalid request body")
@@ -41,7 +45,7 @@ func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService) {
 		writeLinkResult(c, link, err)
 	})
 
-	group.PUT("/links/:id", func(c *gin.Context) {
+	group.PUT("/links/:id", adminOnly, func(c *gin.Context) {
 		id, ok := parseID(c)
 		if !ok {
 			return
@@ -57,7 +61,7 @@ func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService) {
 		writeLinkResult(c, link, err)
 	})
 
-	group.DELETE("/links/:id", func(c *gin.Context) {
+	group.DELETE("/links/:id", adminOnly, func(c *gin.Context) {
 		id, ok := parseID(c)
 		if !ok {
 			return

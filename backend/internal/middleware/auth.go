@@ -62,6 +62,10 @@ func AuthRequired(cfg config.Config, logger *slog.Logger) gin.HandlerFunc {
 }
 
 func RequireRole(role string) gin.HandlerFunc {
+	return RequireAnyRole(role)
+}
+
+func RequireAnyRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		value, exists := c.Get(ContextUserKey)
 		if !exists {
@@ -71,13 +75,25 @@ func RequireRole(role string) gin.HandlerFunc {
 		}
 
 		user, ok := value.(AuthUser)
-		if !ok || (user.Role != role && user.Role != "admin") {
+		if !ok || !roleAllowed(user.Role, roles) {
 			response.Error(c, http.StatusForbidden, 4403, "forbidden")
 			c.Abort()
 			return
 		}
 		c.Next()
 	}
+}
+
+func roleAllowed(userRole string, roles []string) bool {
+	if userRole == "admin" {
+		return true
+	}
+	for _, role := range roles {
+		if userRole == role {
+			return true
+		}
+	}
+	return false
 }
 
 type JWTVerifier struct {

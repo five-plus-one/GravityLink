@@ -26,6 +26,36 @@ textarea {
   grid-template-columns: 232px 1fr;
 }
 
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f4f7f8;
+}
+
+.login-panel {
+  width: min(92vw, 420px);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 34px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #dbe4e7;
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(18, 35, 44, 0.08);
+}
+
+.login-panel p {
+  color: #60727a;
+  line-height: 1.65;
+}
+
+.login-button {
+  min-width: 180px;
+}
+
 .sidebar {
   background: #132128;
   color: #f7fbfc;
@@ -113,14 +143,21 @@ h2 {
   margin-top: 6px;
 }
 
-.auth-box {
+.user-box {
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
-.auth-box input {
-  width: min(38vw, 360px);
+.user-box div {
+  display: grid;
+  justify-items: end;
+}
+
+.user-box small,
+.muted {
+  color: #6d8088;
+  font-size: 12px;
 }
 
 .content-grid {
@@ -368,13 +405,13 @@ th {
   }
 
   .topbar,
-  .auth-box {
+  .user-box {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .auth-box input {
-    width: 100%;
+  .user-box div {
+    justify-items: start;
   }
 
   .content-grid {

@@ -173,3 +173,11 @@ type StatDevice struct {
 	Browser  string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_device"`
 	PV       uint64    `gorm:"column:pv;not null;default:0"`
 }
+
+type SystemConfig struct {
+	ID          uint64    `gorm:"primaryKey;autoIncrement"`
+	KeyName     string    `gorm:"size:128;not null;uniqueIndex:uk_key_name"`
+	Value       string    `gorm:"type:text;not null"`
+	Description *string   `gorm:"size:255"`
+	UpdatedAt   time.Time `gorm:"not null"`
+}
