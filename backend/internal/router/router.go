@@ -37,6 +37,7 @@ func New(deps Dependencies) *gin.Engine {
 	domainService := service.NewDomainService(deps.DB, domainCache)
 	landingService := service.NewLandingService(deps.DB, routingService)
 	publicPageService := service.NewPublicPageService(deps.DB)
+	systemConfigService := service.NewSystemConfigService(deps.DB)
 	statService := service.NewStatService(deps.DB, deps.Redis)
 	accessRecorder := service.NewAccessRecorder(deps.Redis)
 
@@ -53,6 +54,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminAPI := engine.Group("/api/admin")
 	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger), middleware.RequireRole("admin"))
 	registerDomainRoutes(adminAPI, domainService)
+	registerConfigRoutes(adminAPI, systemConfigService, deps)
 
 	registerAssetRoutes(engine)
 	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, publicPageService, accessRecorder)

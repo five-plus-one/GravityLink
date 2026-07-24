@@ -4,6 +4,7 @@ import { BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import SetupWizard from './SetupWizard.vue';
 import {
   createDomain,
   createLandingPage,
@@ -12,9 +13,13 @@ import {
   getDailyStats,
   getHourlyStats,
   getSummaryStats,
+  getSystemConfigs,
   listDomains,
   listLandingPages,
   listLinks,
+  updateSystemConfigs,
+  type AuthConfigStatus,
+  type ConfigListData,
   type DomainItem,
   type LandingPageItem,
   type LinkItem,
@@ -32,6 +37,7 @@ import {
   type AuthConfig,
   type AuthUser,
 } from './auth';
+import { loadSetupStatus, type SetupStatus } from './setup';
 
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
@@ -39,6 +45,7 @@ const links = ref<LinkItem[]>([]);
 const domains = ref<DomainItem[]>([]);
 const landingPages = ref<LandingPageItem[]>([]);
 const summary = ref<SummaryStats | null>(null);
+const systemConfigs = ref<ConfigListData | null>(null);
 const dailyStats = ref<DailyPoint[]>([]);
 const hourlyStats = ref<HourlyPoint[]>([]);
 const dailyChartEl = ref<HTMLDivElement | null>(null);
@@ -49,7 +56,8 @@ const authLoading = ref(true);
 const authConfig = ref<AuthConfig | null>(null);
 const user = ref<AuthUser | null>(null);
 const authError = ref('');
-const activeView = ref<'links' | 'domains' | 'landing' | 'stats'>('links');
+const setupStatus = ref<SetupStatus | null>(null);
+const activeView = ref<'links' | 'domains' | 'landing' | 'stats' | 'settings'>('links');
 
 const form = reactive({
   type: 'short' as 'short' | 'channel' | 'liveqr',
@@ -87,6 +95,17 @@ const statsForm = reactive({
   linkId: 1,
 });
 
+const publicSettingsForm = reactive({
+  siteName: 'GravityLink',
+  homeTitle: '链接服务正在运行',
+  homeMessage: '这是短链接访问入口。请使用完整短链接访问目标内容。',
+  notFoundTitle: '链接不存在或已失效',
+  notFoundMessage: '请检查链接是否完整，或联系链接提供方确认当前链接状态。',
+  goneTitle: '链接已过期',
+  goneMessage: '该链接已超过有效期，无法继续访问。',
+  footer: 'GravityLink',
+});
+
 const activeLinks = computed(() => links.value.filter((link) => link.Status === 'active').length);
 const viewTitle = computed(() => {
   if (activeView.value === 'domains') {
@@ -97,6 +116,9 @@ const viewTitle = computed(() => {
   }
   if (activeView.value === 'stats') {
     return '统计';
+  }
+  if (activeView.value === 'settings') {
+    return '配置';
   }
   return '短链接';
 });
@@ -109,17 +131,41 @@ async function boot() {
   authLoading.value = true;
   authError.value = '';
   try {
+    const status = await loadSetupStatus();
+    setupStatus.value = status;
+    if (status.setup_required) {
+      return;
+    }
     const config = await loadAuthConfig();
     authConfig.value = config;
     await handleCallback(config);
     user.value = currentUser(config);
     if (user.value) {
-      await Promise.all([refreshLinks(), refreshDomains(), refreshLandingPages()]);
+      await Promise.all([refreshLinks(), refreshDomains(), refreshLandingPages(), refreshSystemConfigs()]);
     }
   } catch (err) {
     authError.value = err instanceof Error ? err.message : '登录初始化失败';
   } finally {
     authLoading.value = false;
+  }
+}
+
+async function setupCompleted() {
+  setupStatus.value = null;
+  await boot();
+}
+
+async function refreshSystemConfigs() {
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await getSystemConfigs();
+    systemConfigs.value = data;
+    applyPublicSettings(data.configs);
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '加载失败';
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -312,6 +358,50 @@ async function refreshStats() {
   }
 }
 
+async function submitPublicSettings() {
+  error.value = '';
+  try {
+    const data = await updateSystemConfigs({
+      'public.site_name': publicSettingsForm.siteName,
+      'public.home.title': publicSettingsForm.homeTitle,
+      'public.home.message': publicSettingsForm.homeMessage,
+      'public.not_found.title': publicSettingsForm.notFoundTitle,
+      'public.not_found.message': publicSettingsForm.notFoundMessage,
+      'public.gone.title': publicSettingsForm.goneTitle,
+      'public.gone.message': publicSettingsForm.goneMessage,
+      'public.footer': publicSettingsForm.footer,
+    });
+    systemConfigs.value = data;
+    applyPublicSettings(data.configs);
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '保存失败';
+  }
+}
+
+function applyPublicSettings(configs: Record<string, string>) {
+  publicSettingsForm.siteName = configs['public.site_name'] || publicSettingsForm.siteName;
+  publicSettingsForm.homeTitle = configs['public.home.title'] || publicSettingsForm.homeTitle;
+  publicSettingsForm.homeMessage = configs['public.home.message'] || publicSettingsForm.homeMessage;
+  publicSettingsForm.notFoundTitle = configs['public.not_found.title'] || publicSettingsForm.notFoundTitle;
+  publicSettingsForm.notFoundMessage = configs['public.not_found.message'] || publicSettingsForm.notFoundMessage;
+  publicSettingsForm.goneTitle = configs['public.gone.title'] || publicSettingsForm.goneTitle;
+  publicSettingsForm.goneMessage = configs['public.gone.message'] || publicSettingsForm.goneMessage;
+  publicSettingsForm.footer = configs['public.footer'] || publicSettingsForm.footer;
+}
+
+function authStatusLabel(auth?: AuthConfigStatus): string {
+  if (!auth) {
+    return '未加载';
+  }
+  if (auth.auth_disabled) {
+    return '开发模式';
+  }
+  if (auth.issuer && auth.client_id && auth.audience) {
+    return '已配置';
+  }
+  return '未完整配置';
+}
+
 function renderCharts() {
   if (dailyChartEl.value) {
     const chart = echarts.init(dailyChartEl.value);
@@ -349,6 +439,12 @@ function renderCharts() {
     </section>
   </main>
 
+  <SetupWizard
+    v-else-if="setupStatus?.setup_required"
+    :status="setupStatus"
+    @completed="setupCompleted"
+  />
+
   <main v-else-if="!user" class="login-shell">
     <section class="login-panel">
       <span class="brand-mark">G</span>
@@ -356,7 +452,6 @@ function renderCharts() {
       <p>请使用授权的 Logto 账号登录后继续。</p>
       <button class="primary login-button" @click="startLogin">使用 Logto 登录</button>
       <p v-if="authError" class="error">{{ authError }}</p>
-      <p v-if="authConfig?.auth_disabled" class="muted">开发模式已关闭鉴权，但当前会话未初始化。</p>
     </section>
   </main>
 
@@ -382,6 +477,9 @@ function renderCharts() {
         <button class="nav-item" :class="{ active: activeView === 'stats' }" @click="activeView = 'stats'">
           统计
         </button>
+        <button class="nav-item" :class="{ active: activeView === 'settings' }" @click="activeView = 'settings'">
+          配置
+        </button>
       </nav>
     </aside>
 
@@ -392,7 +490,8 @@ function renderCharts() {
           <p v-if="activeView === 'links'">{{ links.length }} 条记录，{{ activeLinks }} 条可访问</p>
           <p v-else-if="activeView === 'domains'">{{ domains.length }} 个域名配置</p>
           <p v-else-if="activeView === 'landing'">{{ landingPages.length }} 个页面</p>
-          <p v-else>按链接 ID 查看访问数据</p>
+          <p v-else-if="activeView === 'stats'">按链接 ID 查看访问数据</p>
+          <p v-else>公开访问面与登录配置</p>
         </div>
         <div class="user-box">
           <div>
@@ -636,7 +735,7 @@ function renderCharts() {
         </section>
       </section>
 
-      <section v-else class="panel placeholder">
+      <section v-else-if="activeView === 'stats'" class="panel placeholder">
         <div class="table-head">
           <h2>统计</h2>
           <div class="stats-query">
@@ -663,6 +762,81 @@ function renderCharts() {
             <div ref="hourlyChartEl" class="chart"></div>
           </section>
         </div>
+      </section>
+
+      <section v-else class="content-grid">
+        <form class="panel editor" @submit.prevent="submitPublicSettings">
+          <h2>公开提示页</h2>
+          <label>
+            站点名
+            <input v-model="publicSettingsForm.siteName" />
+          </label>
+          <label>
+            首页标题
+            <input v-model="publicSettingsForm.homeTitle" />
+          </label>
+          <label>
+            首页提示
+            <textarea v-model="publicSettingsForm.homeMessage"></textarea>
+          </label>
+          <label>
+            不存在标题
+            <input v-model="publicSettingsForm.notFoundTitle" />
+          </label>
+          <label>
+            不存在提示
+            <textarea v-model="publicSettingsForm.notFoundMessage"></textarea>
+          </label>
+          <label>
+            过期标题
+            <input v-model="publicSettingsForm.goneTitle" />
+          </label>
+          <label>
+            过期提示
+            <textarea v-model="publicSettingsForm.goneMessage"></textarea>
+          </label>
+          <label>
+            页脚
+            <input v-model="publicSettingsForm.footer" />
+          </label>
+          <button class="primary" type="submit">保存公开提示</button>
+          <p v-if="error" class="error">{{ error }}</p>
+        </form>
+
+        <section class="panel table-panel">
+          <div class="table-head">
+            <h2>Logto 登录</h2>
+            <button class="ghost" :disabled="loading" @click="refreshSystemConfigs">
+              {{ loading ? '加载中' : '刷新' }}
+            </button>
+          </div>
+          <div class="settings-list">
+            <div class="setting-row">
+              <span>状态</span>
+              <strong>{{ authStatusLabel(systemConfigs?.auth) }}</strong>
+            </div>
+            <div class="setting-row">
+              <span>Issuer</span>
+              <code>{{ systemConfigs?.auth.issuer || '-' }}</code>
+            </div>
+            <div class="setting-row">
+              <span>Client ID</span>
+              <code>{{ systemConfigs?.auth.client_id || '-' }}</code>
+            </div>
+            <div class="setting-row">
+              <span>Audience</span>
+              <code>{{ systemConfigs?.auth.audience || '-' }}</code>
+            </div>
+            <div class="setting-row">
+              <span>回调地址</span>
+              <code>{{ systemConfigs?.auth.redirect_uri || '-' }}</code>
+            </div>
+            <div class="setting-row">
+              <span>允许角色</span>
+              <code>{{ systemConfigs?.auth.allowed_roles?.join(', ') || '-' }}</code>
+            </div>
+          </div>
+        </section>
       </section>
     </section>
   </main>

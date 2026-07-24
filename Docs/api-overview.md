@@ -51,6 +51,16 @@
 | GET | `/api/v1/health` | 健康检查 |
 | GET | `/api/v1/auth/config` | 管理端 Logto 登录运行时配置 |
 
+### 首次初始化 API（仅管理端端口）
+
+| 方法 | 路径 | 说明 |
+|-----|------|------|
+| GET | `/api/setup/status` | 获取是否需要初始化、非敏感默认值和缺失项 |
+| POST | `/api/setup/test-database` | 测试 MySQL 与 Redis 连接 |
+| POST | `/api/setup/complete` | 校验、持久化配置并启动业务服务；成功后锁定 |
+
+初始化 API 不经过 Logto，因为此时认证服务尚未配置；它只存在于管理端监听器，并在初始化完成后拒绝所有写操作。production 环境不能通过初始化 API 关闭鉴权。
+
 ### 用户 API（需登录，`/api/v1/`）
 
 #### 链接管理

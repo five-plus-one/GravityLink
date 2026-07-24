@@ -10,10 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"gravitylink/backend/internal/app"
 	"gravitylink/backend/internal/config"
-	"gravitylink/backend/internal/database"
 	"gravitylink/backend/internal/router"
-	"gravitylink/backend/internal/worker"
 )
 
 func main() {
@@ -21,43 +20,20 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: cfg.LogLevel,
 	}))
-
-	db, err := database.ConnectMySQL(cfg.MySQLDSN)
-	if err != nil {
-		logger.Error("connect mysql failed", "error", err)
-		os.Exit(1)
+	manager := app.NewManager(cfg, logger)
+	if err := manager.Start(); err != nil {
+		logger.Warn("normal runtime unavailable; admin setup mode enabled", "error", err)
 	}
-
-	redisClient, err := database.ConnectRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
-	if err != nil {
-		logger.Error("connect redis failed", "error", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			logger.Warn("close redis failed", "error", err)
-		}
-	}()
-
-	engine := router.New(router.Dependencies{
-		Config: cfg,
-		DB:     db,
-		Redis:  redisClient,
-		Logger: logger,
-	})
-	workerCtx, stopWorkers := context.WithCancel(context.Background())
-	defer stopWorkers()
-	go worker.NewAccessLogConsumer(db, redisClient, logger).Start(workerCtx)
-	go worker.NewLogArchiver(db, logger).Start(workerCtx)
+	defer manager.Shutdown()
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           engine,
+		Handler:           manager,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	adminServer := &http.Server{
 		Addr:              cfg.AdminHTTPAddr,
-		Handler:           router.NewAdminFrontendHandler(engine),
+		Handler:           router.NewAdminFrontendHandler(manager, manager.SetupHandler()),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

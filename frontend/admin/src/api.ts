@@ -106,6 +106,20 @@ export interface HourlyPoint {
   pv: number;
 }
 
+export interface AuthConfigStatus {
+  auth_disabled: boolean;
+  issuer: string;
+  client_id: string;
+  audience: string;
+  redirect_uri: string;
+  allowed_roles: string[];
+}
+
+export interface ConfigListData {
+  configs: Record<string, string>;
+  auth: AuthConfigStatus;
+}
+
 export async function listLinks(): Promise<LinkListData> {
   return request<LinkListData>('/api/v1/links');
 }
@@ -155,6 +169,17 @@ export async function getDailyStats(linkId: number): Promise<DailyPoint[]> {
 
 export async function getHourlyStats(linkId: number): Promise<HourlyPoint[]> {
   return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly`);
+}
+
+export async function getSystemConfigs(): Promise<ConfigListData> {
+  return request<ConfigListData>('/api/admin/configs');
+}
+
+export async function updateSystemConfigs(configs: Record<string, string>): Promise<ConfigListData> {
+  return request<ConfigListData>('/api/admin/configs', {
+    method: 'PUT',
+    body: JSON.stringify({ configs }),
+  });
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

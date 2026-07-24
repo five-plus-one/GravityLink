@@ -58,10 +58,10 @@ func (s *PublicPageService) Gone(ctx context.Context) (string, int) {
 func (s *PublicPageService) view(ctx context.Context, fallback PublicPageView) PublicPageView {
 	values := s.configs(ctx)
 	return PublicPageView{
-		SiteName: firstNonEmpty(values["public.site_name"], fallback.SiteName),
-		Title:    firstNonEmpty(values["public."+pageKey(fallback.Title)+".title"], fallback.Title),
-		Message:  firstNonEmpty(values["public."+pageKey(fallback.Title)+".message"], fallback.Message),
-		Footer:   firstNonEmpty(values["public.footer"], fallback.Footer),
+		SiteName: firstPublicValue(values["public.site_name"], fallback.SiteName),
+		Title:    firstPublicValue(values["public."+pageKey(fallback.Title)+".title"], fallback.Title),
+		Message:  firstPublicValue(values["public."+pageKey(fallback.Title)+".message"], fallback.Message),
+		Footer:   firstPublicValue(values["public.footer"], fallback.Footer),
 	}
 }
 
@@ -86,6 +86,15 @@ func pageKey(title string) string {
 	default:
 		return "not_found"
 	}
+}
+
+func firstPublicValue(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func renderPublicPage(view PublicPageView, status int) string {

@@ -56,6 +56,290 @@ textarea {
   min-width: 180px;
 }
 
+.setup-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: #f4f7f8;
+}
+
+.setup-aside {
+  display: flex;
+  flex-direction: column;
+  padding: 30px 24px;
+  background: #132128;
+  color: #f7fbfc;
+}
+
+.setup-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.setup-brand strong,
+.setup-brand small {
+  display: block;
+}
+
+.setup-brand small {
+  margin-top: 3px;
+  color: #9ab0b8;
+}
+
+.setup-steps {
+  display: grid;
+  gap: 8px;
+  margin: 56px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-steps li {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  color: #8fa5ad;
+  border-radius: 6px;
+}
+
+.setup-steps li > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #45606a;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.setup-steps li strong,
+.setup-steps li small {
+  display: block;
+}
+
+.setup-steps li small {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.setup-steps li.active {
+  background: #20333b;
+  color: #ffffff;
+}
+
+.setup-steps li.active > span,
+.setup-steps li.done > span {
+  border-color: #42c2a9;
+  background: #42c2a9;
+  color: #09211c;
+}
+
+.setup-steps li.done {
+  color: #c7d5da;
+}
+
+.setup-environment {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 14px 12px;
+  border-top: 1px solid #2a4049;
+  color: #9ab0b8;
+  font-size: 12px;
+}
+
+.setup-environment strong {
+  color: #dfe9ec;
+}
+
+.setup-main {
+  width: min(920px, calc(100vw - 328px));
+  margin: 0 auto;
+  padding: 38px 0;
+}
+
+.setup-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin-bottom: 8px;
+  color: #188d7c;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-progress {
+  color: #6d8088;
+  font-size: 13px;
+}
+
+.setup-notice,
+.setup-section,
+.setup-review {
+  margin-bottom: 16px;
+  border: 1px solid #dbe4e7;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.setup-notice {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-left: 4px solid #e0a82e;
+}
+
+.setup-notice span {
+  color: #60727a;
+  font-size: 13px;
+}
+
+.setup-form {
+  display: grid;
+  gap: 16px;
+}
+
+.setup-section {
+  padding: 22px;
+}
+
+.setup-section-head {
+  margin-bottom: 20px;
+}
+
+.setup-section-head p,
+.auth-mode p {
+  margin-top: 5px;
+  color: #60727a;
+  font-size: 13px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.span-4 {
+  grid-column: span 4;
+}
+
+.advanced {
+  color: #405158;
+  font-size: 13px;
+}
+
+.advanced summary {
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.switch-row input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.auth-fields {
+  margin-top: 22px;
+}
+
+.field-hint {
+  margin-top: 12px;
+  color: #b54708;
+  font-size: 13px;
+}
+
+.dev-mode-note,
+.setup-final-note {
+  margin-top: 20px;
+  padding: 14px;
+  border: 1px solid #bde6dd;
+  border-radius: 6px;
+  background: #eef9f6;
+  color: #315c53;
+  line-height: 1.6;
+}
+
+.setup-review {
+  overflow: hidden;
+}
+
+.setup-review section {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eef3f5;
+}
+
+.setup-review section span {
+  color: #60727a;
+}
+
+.setup-review section button {
+  min-height: auto;
+  padding: 4px 8px;
+  border: 0;
+  color: #188d7c;
+}
+
+.setup-final-note {
+  margin: 20px;
+}
+
+.success-message {
+  color: #10735d;
+  font-size: 13px;
+}
+
+.setup-error {
+  margin-top: 12px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #dbe4e7;
+}
+
+.setup-actions > div {
+  display: flex;
+  gap: 10px;
+}
+
 .sidebar {
   background: #132128;
   color: #f7fbfc;
@@ -391,7 +675,69 @@ th {
   border-radius: 8px;
 }
 
+.settings-list {
+  display: grid;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid #eef3f5;
+  align-items: center;
+}
+
+.setting-row span {
+  color: #60727a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.setting-row code {
+  min-width: 0;
+  overflow: hidden;
+  color: #172026;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
+  .setup-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-aside {
+    padding: 18px;
+  }
+
+  .setup-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 22px;
+  }
+
+  .setup-steps li {
+    grid-template-columns: 30px 1fr;
+    padding: 8px;
+  }
+
+  .setup-environment {
+    margin-top: 18px;
+  }
+
+  .setup-main {
+    width: auto;
+    padding: 24px 18px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .span-4 {
+    grid-column: span 2;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -401,7 +747,7 @@ th {
   }
 
   .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .topbar,
@@ -420,5 +766,44 @@ th {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .setting-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .setup-steps li div,
+  .setup-progress {
+    display: none;
+  }
+
+  .setup-steps li {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .setup-header,
+  .auth-mode {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .span-2,
+  .span-4 {
+    grid-column: span 1;
+  }
+
+  .setup-review section {
+    grid-template-columns: 1fr auto;
+  }
+
+  .setup-review section span {
+    grid-column: 1 / -1;
   }
 }

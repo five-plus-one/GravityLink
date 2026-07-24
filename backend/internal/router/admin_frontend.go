@@ -9,7 +9,7 @@ import (
 	"gravitylink/backend/internal/web"
 )
 
-func NewAdminFrontendHandler(api http.Handler) http.Handler {
+func NewAdminFrontendHandler(api http.Handler, setupHandlers ...http.Handler) http.Handler {
 	adminFS, err := fs.Sub(web.Assets, "admin")
 	if err != nil {
 		return http.NotFoundHandler()
@@ -17,6 +17,10 @@ func NewAdminFrontendHandler(api http.Handler) http.Handler {
 
 	fileServer := http.FileServer(http.FS(adminFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/setup/") && len(setupHandlers) > 0 && setupHandlers[0] != nil {
+			setupHandlers[0].ServeHTTP(w, r)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)
 			return

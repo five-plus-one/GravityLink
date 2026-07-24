@@ -1,9 +1,11 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +16,16 @@ type Config struct {
 	HTTPAddr          string
 	AdminHTTPAddr     string
 	LogLevel          slog.Level
+	ConfigFile        string
+	MySQLHost         string
+	MySQLPort         string
+	MySQLDatabase     string
+	MySQLUser         string
+	MySQLPassword     string
+	MySQLParams       string
 	MySQLDSN          string
+	RedisHost         string
+	RedisPort         string
 	RedisAddr         string
 	RedisPassword     string
 	RedisDB           int
@@ -28,47 +39,212 @@ type Config struct {
 	AdminAllowedRoles []string
 }
 
+type FileConfig struct {
+	AppEnv            string   `json:"app_env"`
+	MySQLHost         string   `json:"mysql_host"`
+	MySQLPort         string   `json:"mysql_port"`
+	MySQLDatabase     string   `json:"mysql_database"`
+	MySQLUser         string   `json:"mysql_user"`
+	MySQLPassword     string   `json:"mysql_password"`
+	MySQLParams       string   `json:"mysql_params"`
+	MySQLDSN          string   `json:"mysql_dsn,omitempty"`
+	RedisHost         string   `json:"redis_host"`
+	RedisPort         string   `json:"redis_port"`
+	RedisAddr         string   `json:"redis_addr,omitempty"`
+	RedisPassword     string   `json:"redis_password,omitempty"`
+	RedisDB           int      `json:"redis_db"`
+	AuthDisabled      bool     `json:"auth_disabled"`
+	LogtoIssuer       string   `json:"logto_issuer,omitempty"`
+	LogtoAppID        string   `json:"logto_app_id,omitempty"`
+	LogtoAudience     string   `json:"logto_audience,omitempty"`
+	LogtoJWKSURL      string   `json:"logto_jwks_url,omitempty"`
+	LogtoScopes       string   `json:"logto_scopes"`
+	AdminBaseURL      string   `json:"admin_base_url,omitempty"`
+	AdminAllowedRoles []string `json:"admin_allowed_roles"`
+}
+
 func Load() Config {
-	return Config{
-		AppEnv:            envString("APP_ENV", "development"),
-		HTTPAddr:          envString("HTTP_ADDR", ":8080"),
-		AdminHTTPAddr:     envString("ADMIN_HTTP_ADDR", ":8081"),
-		LogLevel:          envLogLevel("LOG_LEVEL", slog.LevelInfo),
-		MySQLDSN:          envMySQLDSN(),
-		RedisAddr:         envRedisAddr(),
-		RedisPassword:     envString("REDIS_PASSWORD", ""),
-		RedisDB:           envInt("REDIS_DB", 0),
-		AuthDisabled:      envBool("AUTH_DISABLED", false),
-		LogtoIssuer:       envString("LOGTO_ISSUER", ""),
-		LogtoAppID:        envString("LOGTO_APP_ID", ""),
-		LogtoAudience:     envString("LOGTO_AUDIENCE", ""),
-		LogtoJWKSURL:      envString("LOGTO_JWKS_URL", ""),
-		LogtoScopes:       envString("LOGTO_SCOPES", "openid profile email"),
-		AdminBaseURL:      envString("ADMIN_BASE_URL", ""),
-		AdminAllowedRoles: envList("ADMIN_ALLOWED_ROLES", []string{"admin"}),
+	cfg := Config{
+		AppEnv:            "development",
+		HTTPAddr:          ":8080",
+		AdminHTTPAddr:     ":8081",
+		LogLevel:          slog.LevelInfo,
+		ConfigFile:        envString("CONFIG_FILE", "data/gravitylink.json"),
+		MySQLHost:         "127.0.0.1",
+		MySQLPort:         "3306",
+		MySQLDatabase:     "gravitylink",
+		MySQLUser:         "gravitylink",
+		MySQLPassword:     "",
+		MySQLParams:       "charset=utf8mb4&parseTime=True&loc=Local",
+		RedisHost:         "127.0.0.1",
+		RedisPort:         "6379",
+		RedisDB:           0,
+		LogtoScopes:       "openid profile email",
+		AdminAllowedRoles: []string{"admin"},
+	}
+	if persisted, err := loadFile(cfg.ConfigFile); err == nil {
+		applyFile(&cfg, persisted)
+	}
+	applyEnvironment(&cfg)
+	cfg.rebuildConnections()
+	return cfg
+}
+
+func SaveFile(path string, cfg Config) error {
+	if path == "" {
+		return fmt.Errorf("config file path is empty")
+	}
+	payload, err := json.MarshalIndent(fileFromConfig(cfg), "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(dir, ".gravitylink-*.tmp")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o600); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if _, err := temp.Write(payload); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
+}
+
+func (c Config) MissingRuntimeConfig() []string {
+	var missing []string
+	if c.MySQLDSN == "" {
+		missing = append(missing, "mysql")
+	}
+	if c.RedisAddr == "" {
+		missing = append(missing, "redis")
+	}
+	if !c.AuthDisabled {
+		if c.LogtoIssuer == "" {
+			missing = append(missing, "logto_issuer")
+		}
+		if c.LogtoAppID == "" {
+			missing = append(missing, "logto_app_id")
+		}
+		if c.LogtoAudience == "" {
+			missing = append(missing, "logto_audience")
+		}
+		if c.AdminBaseURL == "" {
+			missing = append(missing, "admin_base_url")
+		}
+	}
+	return missing
+}
+
+func (c *Config) RebuildConnections() {
+	c.rebuildConnections()
+}
+
+func (c *Config) rebuildConnections() {
+	if c.MySQLDSN == "" && c.MySQLHost != "" && c.MySQLPort != "" && c.MySQLDatabase != "" && c.MySQLUser != "" {
+		c.MySQLDSN = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", c.MySQLUser, c.MySQLPassword, c.MySQLHost, c.MySQLPort, c.MySQLDatabase, c.MySQLParams)
+	}
+	if c.RedisAddr == "" && c.RedisHost != "" && c.RedisPort != "" {
+		c.RedisAddr = fmt.Sprintf("%s:%s", c.RedisHost, c.RedisPort)
 	}
 }
 
-func envMySQLDSN() string {
-	if dsn := os.Getenv("MYSQL_DSN"); dsn != "" {
-		return dsn
+func loadFile(path string) (FileConfig, error) {
+	var cfg FileConfig
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
 	}
-
-	user := envString("MYSQL_USER", "gravitylink")
-	password := envString("MYSQL_PASSWORD", "gravitylink")
-	host := envString("MYSQL_HOST", "127.0.0.1")
-	port := envString("MYSQL_PORT", "3306")
-	database := envString("MYSQL_DATABASE", "gravitylink")
-	params := envString("MYSQL_PARAMS", "charset=utf8mb4&parseTime=True&loc=Local")
-
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", user, password, host, port, database, params)
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
 }
 
-func envRedisAddr() string {
-	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
-		return addr
+func applyFile(cfg *Config, file FileConfig) {
+	cfg.AppEnv = first(file.AppEnv, cfg.AppEnv)
+	cfg.MySQLHost = first(file.MySQLHost, cfg.MySQLHost)
+	cfg.MySQLPort = first(file.MySQLPort, cfg.MySQLPort)
+	cfg.MySQLDatabase = first(file.MySQLDatabase, cfg.MySQLDatabase)
+	cfg.MySQLUser = first(file.MySQLUser, cfg.MySQLUser)
+	cfg.MySQLPassword = file.MySQLPassword
+	cfg.MySQLParams = first(file.MySQLParams, cfg.MySQLParams)
+	cfg.MySQLDSN = file.MySQLDSN
+	cfg.RedisHost = first(file.RedisHost, cfg.RedisHost)
+	cfg.RedisPort = first(file.RedisPort, cfg.RedisPort)
+	cfg.RedisAddr = file.RedisAddr
+	cfg.RedisPassword = file.RedisPassword
+	cfg.RedisDB = file.RedisDB
+	cfg.AuthDisabled = file.AuthDisabled
+	cfg.LogtoIssuer = file.LogtoIssuer
+	cfg.LogtoAppID = file.LogtoAppID
+	cfg.LogtoAudience = file.LogtoAudience
+	cfg.LogtoJWKSURL = file.LogtoJWKSURL
+	cfg.LogtoScopes = first(file.LogtoScopes, cfg.LogtoScopes)
+	cfg.AdminBaseURL = file.AdminBaseURL
+	if len(file.AdminAllowedRoles) > 0 {
+		cfg.AdminAllowedRoles = file.AdminAllowedRoles
 	}
-	return fmt.Sprintf("%s:%s", envString("REDIS_HOST", "127.0.0.1"), envString("REDIS_PORT", "6379"))
+}
+
+func applyEnvironment(cfg *Config) {
+	setString := func(key string, target *string) {
+		if value, ok := os.LookupEnv(key); ok {
+			*target = value
+		}
+	}
+	setString("APP_ENV", &cfg.AppEnv)
+	setString("HTTP_ADDR", &cfg.HTTPAddr)
+	setString("ADMIN_HTTP_ADDR", &cfg.AdminHTTPAddr)
+	setString("MYSQL_HOST", &cfg.MySQLHost)
+	setString("MYSQL_PORT", &cfg.MySQLPort)
+	setString("MYSQL_DATABASE", &cfg.MySQLDatabase)
+	setString("MYSQL_USER", &cfg.MySQLUser)
+	setString("MYSQL_PASSWORD", &cfg.MySQLPassword)
+	setString("MYSQL_PARAMS", &cfg.MySQLParams)
+	setString("MYSQL_DSN", &cfg.MySQLDSN)
+	setString("REDIS_HOST", &cfg.RedisHost)
+	setString("REDIS_PORT", &cfg.RedisPort)
+	setString("REDIS_ADDR", &cfg.RedisAddr)
+	setString("REDIS_PASSWORD", &cfg.RedisPassword)
+	setString("LOGTO_ISSUER", &cfg.LogtoIssuer)
+	setString("LOGTO_APP_ID", &cfg.LogtoAppID)
+	setString("LOGTO_AUDIENCE", &cfg.LogtoAudience)
+	setString("LOGTO_JWKS_URL", &cfg.LogtoJWKSURL)
+	setString("LOGTO_SCOPES", &cfg.LogtoScopes)
+	setString("ADMIN_BASE_URL", &cfg.AdminBaseURL)
+	cfg.LogLevel = envLogLevel("LOG_LEVEL", cfg.LogLevel)
+	cfg.RedisDB = envInt("REDIS_DB", cfg.RedisDB)
+	cfg.AuthDisabled = envBool("AUTH_DISABLED", cfg.AuthDisabled)
+	cfg.AdminAllowedRoles = envList("ADMIN_ALLOWED_ROLES", cfg.AdminAllowedRoles)
+}
+
+func fileFromConfig(cfg Config) FileConfig {
+	return FileConfig{
+		AppEnv: cfg.AppEnv, MySQLHost: cfg.MySQLHost, MySQLPort: cfg.MySQLPort,
+		MySQLDatabase: cfg.MySQLDatabase, MySQLUser: cfg.MySQLUser, MySQLPassword: cfg.MySQLPassword,
+		MySQLParams: cfg.MySQLParams, MySQLDSN: cfg.MySQLDSN, RedisHost: cfg.RedisHost,
+		RedisPort: cfg.RedisPort, RedisAddr: cfg.RedisAddr, RedisPassword: cfg.RedisPassword,
+		RedisDB: cfg.RedisDB, AuthDisabled: cfg.AuthDisabled, LogtoIssuer: cfg.LogtoIssuer,
+		LogtoAppID: cfg.LogtoAppID, LogtoAudience: cfg.LogtoAudience, LogtoJWKSURL: cfg.LogtoJWKSURL,
+		LogtoScopes: cfg.LogtoScopes, AdminBaseURL: cfg.AdminBaseURL, AdminAllowedRoles: cfg.AdminAllowedRoles,
+	}
+}
+
+func first(value string, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 func envString(key string, fallback string) string {
