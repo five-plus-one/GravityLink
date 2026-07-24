@@ -17,11 +17,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gravitylink ./cmd/server
 
 FROM alpine:3.20
 
-RUN adduser -D -H -u 10001 gravitylink
+RUN adduser -D -H -u 10001 gravitylink \
+    && mkdir -p /data \
+    && chown gravitylink:gravitylink /data
 USER gravitylink
 
 WORKDIR /app
 COPY --from=builder /out/gravitylink /app/gravitylink
 
 EXPOSE 8080 8081
+VOLUME ["/data"]
 ENTRYPOINT ["/app/gravitylink"]

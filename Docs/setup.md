@@ -9,21 +9,33 @@ GravityLink 的管理端必须能够在业务数据库或 Logto 尚未配置时�
 1. 程序启动后读取环境变量与 `CONFIG_FILE` 指向的持久化配置文件。
 2. 配置完整且 MySQL、Redis 可连接时，直接启动正常业务路由。
 3. 配置缺失或依赖连接失败时，管理端进入 `setup_required` 状态；公网端口返回服务尚未初始化的提示。
-4. 管理端通过初始化 API 测试 MySQL、Redis，并校验 Logto 必填项。
-5. 用户确认后，后端以原子方式写入配置文件，并在当前进程内启动业务服务。
-6. 业务服务启动成功后，初始化写接口立即锁定；后续配置由已认证管理员维护。
+4. 用户先选择 Logto 或本地账号认证方式。
+5. Logto 模式通过 OIDC Discovery 检查配置并完成一次真实登录，暂存已验证的 `sub`；本地模式只暂存密码哈希。
+6. 用户配置并测试 MySQL、Redis；空数据库创建表结构，旧数据库执行受控迁移。
+7. 后端在事务中创建或认领首个账号并设为 `super_admin`，写入安装状态。
+8. 业务服务在当前进程内启用，初始化写接口立即锁定，临时认证信息从配置文件移除。
 
 ## 配置优先级
 
 运行配置按以下优先级合并：
 
-1. 显式环境变量
+1. 显式设置的非空环境变量
 2. `CONFIG_FILE` 持久化配置
 3. 开发默认值
 
 容器默认使用 `/data/gravitylink.json`，并通过独立 Docker volume 持久化。配置文件可能包含数据库和 Redis 密码，创建时使用仅当前运行用户可读写的权限，API 永不回传密码。
 
+基础 compose 传入的空值不会覆盖初始化文件；`SETUP_DEFAULT_MYSQL_HOST` 与 `SETUP_DEFAULT_REDIS_HOST` 只用于向导首次展示，不属于运行时强制配置。
+
 ## 初始化表单
+
+### 管理员认证
+
+- 认证模式：Logto 或本地账号
+- Logto：Issuer、SPA App ID、API Audience、JWKS、Scopes、管理端 URL
+- Logto Discovery 检查及首次真实登录验证
+- 本地账号：用户名、可选邮箱、密码与密码确认
+- 本地密码只保存强哈希，不写日志、不通过状态 API 回传
 
 ### 数据库
 
@@ -31,25 +43,20 @@ GravityLink 的管理端必须能够在业务数据库或 Logto 尚未配置时�
 - Redis Host、Port、Password、DB
 - 独立的连接测试操作
 
-当前版本要求目标 MySQL 已创建 GravityLink 表结构；官方 compose 会通过 `deploy/mysql/init/001_schema.sql` 自动完成。
+Logto 回调地址为 `{ADMIN_BASE_URL}/setup/auth/callback`；正常登录回调仍为 `{ADMIN_BASE_URL}/auth/callback`。
 
-### Logto
+## 恢复初始化
 
-- 是否关闭鉴权（仅非 production 环境允许）
-- Issuer
-- SPA App ID
-- API Audience
-- JWKS URL（可选）
-- Scopes
-- 管理端公开 URL
-- 允许管理的角色
+仅 `super_admin` 可以在设置页执行“清除所有配置”。操作要求重新认证和确认短语。后端清除系统配置、安装状态和会话，禁用旧账号，删除持久化运行配置并切换回初始化 handler；短链接、域名、落地页和统计数据默认保留。
 
-Logto 回调地址为 `{ADMIN_BASE_URL}/auth/callback`。
+重置期间写入 reset marker。即使进程在数据库事务与配置文件切换之间崩溃，重启后也必须进入初始化态。
 
 ## 安全边界
 
 - `/api/setup/*` 只在管理端监听器中处理。
 - 初始化完成后，测试与保存接口返回 `setup_locked`。
-- production 环境禁止保存 `AUTH_DISABLED=true`。
+- production 环境不提供无身份认证的管理模式。
+- 首个超级管理员认领必须使用数据库事务，避免并发首次登录产生多个所有者。
+- Logto 角色声明不作为 GravityLink 后台授权依据。
 - API 状态响应只包含非敏感配置和缺失项，不返回数据库、Redis 密码或完整 DSN。
 - 初始化接口应由反向代理限制在可信网络内；完成初始化后仍建议限制管理端域名的公网访问。

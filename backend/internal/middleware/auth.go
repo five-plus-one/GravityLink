@@ -15,30 +15,52 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"gravitylink/backend/internal/config"
+	"gravitylink/backend/internal/model"
 	"gravitylink/backend/internal/response"
+	"gravitylink/backend/internal/service"
 )
 
 const ContextUserKey = "gravitylink_user"
+const LocalSessionCookie = "gravitylink_session"
 
 var errTokenInvalid = errors.New("token invalid")
 
 type AuthUser struct {
-	Subject  string
-	Email    string
-	Username string
-	Role     string
+	ID         uint64 `json:"id"`
+	Subject    string `json:"subject"`
+	Email      string `json:"email"`
+	Username   string `json:"username"`
+	Role       string `json:"role"`
+	Status     string `json:"status"`
+	AuthSource string `json:"auth_source"`
 }
 
-func AuthRequired(cfg config.Config, logger *slog.Logger) gin.HandlerFunc {
+func AuthRequired(cfg config.Config, logger *slog.Logger, databases ...*gorm.DB) gin.HandlerFunc {
 	verifier := JWTVerifier{config: cfg}
+	var db *gorm.DB
+	if len(databases) > 0 {
+		db = databases[0]
+	}
 
 	return func(c *gin.Context) {
 		if cfg.AuthDisabled {
-			c.Set(ContextUserKey, AuthUser{Subject: "dev", Username: "dev", Role: "admin"})
+			c.Set(ContextUserKey, AuthUser{Subject: "dev", Username: "dev", Role: model.UserRoleSuperAdmin, Status: model.StatusActive, AuthSource: "development"})
 			c.Next()
 			return
+		}
+
+		if db != nil {
+			if sessionToken, err := c.Cookie(LocalSessionCookie); err == nil && sessionToken != "" {
+				user, err := service.NewAuthService(db).ResolveSession(sessionToken)
+				if err == nil {
+					c.Set(ContextUserKey, authUserFromModel(user))
+					c.Next()
+					return
+				}
+			}
 		}
 
 		token := bearerToken(c.GetHeader("Authorization"))
@@ -48,15 +70,33 @@ func AuthRequired(cfg config.Config, logger *slog.Logger) gin.HandlerFunc {
 			return
 		}
 
-		user, err := verifier.Verify(c.Request.Context(), token)
+		identity, err := verifier.Verify(c.Request.Context(), token)
 		if err != nil {
 			logger.Warn("jwt verify failed", "error", err)
 			response.Error(c, http.StatusUnauthorized, 4401, "unauthorized")
 			c.Abort()
 			return
 		}
-
-		c.Set(ContextUserKey, user)
+		if db == nil {
+			c.Set(ContextUserKey, identity)
+			c.Next()
+			return
+		}
+		dbUser, err := service.NewAuthService(db).ProvisionLogto(service.Identity{
+			Subject: identity.Subject, Username: identity.Username, Email: identity.Email,
+		})
+		if err != nil {
+			logger.Warn("provision Logto user failed", "error", err)
+			response.Error(c, http.StatusInternalServerError, 5000, "account lookup failed")
+			c.Abort()
+			return
+		}
+		if dbUser.Status != model.StatusActive {
+			response.Error(c, http.StatusForbidden, 4403, "account pending approval")
+			c.Abort()
+			return
+		}
+		c.Set(ContextUserKey, authUserFromModel(dbUser))
 		c.Next()
 	}
 }
@@ -85,7 +125,7 @@ func RequireAnyRole(roles ...string) gin.HandlerFunc {
 }
 
 func roleAllowed(userRole string, roles []string) bool {
-	if userRole == "admin" {
+	if userRole == model.UserRoleSuperAdmin {
 		return true
 	}
 	for _, role := range roles {
@@ -96,8 +136,25 @@ func roleAllowed(userRole string, roles []string) bool {
 	return false
 }
 
+func RequireSuperAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		value, exists := c.Get(ContextUserKey)
+		user, ok := value.(AuthUser)
+		if !exists || !ok || user.Role != model.UserRoleSuperAdmin {
+			response.Error(c, http.StatusForbidden, 4403, "super administrator required")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 type JWTVerifier struct {
 	config config.Config
+}
+
+func VerifyToken(ctx context.Context, cfg config.Config, token string) (AuthUser, error) {
+	return JWTVerifier{config: cfg}.Verify(ctx, token)
 }
 
 type jwtHeader struct {
@@ -244,25 +301,25 @@ func decodeJWTPart(part string, target interface{}) error {
 
 func userFromPayload(payload jwtPayload) AuthUser {
 	return AuthUser{
-		Subject:  stringClaim(payload, "sub"),
-		Email:    stringClaim(payload, "email"),
-		Username: firstNonEmpty(stringClaim(payload, "username"), stringClaim(payload, "name")),
-		Role:     roleFromPayload(payload),
+		Subject:    stringClaim(payload, "sub"),
+		Email:      stringClaim(payload, "email"),
+		Username:   firstNonEmpty(stringClaim(payload, "username"), stringClaim(payload, "name")),
+		Status:     model.StatusActive,
+		AuthSource: model.AuthSourceLogto,
 	}
 }
 
-func roleFromPayload(payload jwtPayload) string {
-	if role := stringClaim(payload, "role"); role != "" {
-		return role
+func authUserFromModel(user model.User) AuthUser {
+	result := AuthUser{
+		ID: user.ID, Username: user.Username, Role: user.Role, Status: user.Status, AuthSource: user.AuthSource,
 	}
-	if roles, ok := payload["roles"].([]interface{}); ok {
-		for _, role := range roles {
-			if value, ok := role.(string); ok && value == "admin" {
-				return "admin"
-			}
-		}
+	if user.SSOID != nil {
+		result.Subject = *user.SSOID
 	}
-	return "user"
+	if user.Email != nil {
+		result.Email = *user.Email
+	}
+	return result
 }
 
 func stringClaim(payload jwtPayload, key string) string {

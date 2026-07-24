@@ -7,6 +7,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+
+	"gravitylink/backend/internal/model"
 )
 
 func ConnectMySQL(dsn string) (*gorm.DB, error) {
@@ -30,6 +32,34 @@ func ConnectMySQL(dsn string) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+func EnsureSchema(db *gorm.DB) error {
+	models := []any{
+		&model.User{},
+		&model.AuthSession{},
+		&model.InstallationState{},
+		&model.AuditLog{},
+		&model.Domain{},
+		&model.Link{},
+		&model.ChannelConfig{},
+		&model.RoutingStrategy{},
+		&model.RoutingTarget{},
+		&model.LandingPage{},
+		&model.AccessLog{},
+		&model.StatDaily{},
+		&model.StatHourly{},
+		&model.StatGeo{},
+		&model.StatDevice{},
+		&model.SystemConfig{},
+	}
+	if err := db.AutoMigrate(models...); err != nil {
+		return err
+	}
+	if err := db.Exec("CREATE TABLE IF NOT EXISTS access_logs_archive LIKE access_logs").Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func ConnectRedis(addr string, password string, db int) (*redis.Client, error) {

@@ -8,11 +8,16 @@ import (
 )
 
 const (
-	UserRoleAdmin = "admin"
-	UserRoleUser  = "user"
+	UserRoleSuperAdmin = "super_admin"
+	UserRoleAdmin      = "admin"
+	UserRoleUser       = "user"
+
+	AuthSourceLogto = "logto"
+	AuthSourceLocal = "local"
 
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
+	StatusPending  = "pending"
 
 	DomainTypeEntry   = "entry"
 	DomainTypeTransit = "transit"
@@ -28,15 +33,47 @@ const (
 )
 
 type User struct {
-	ID        uint64         `gorm:"primaryKey;autoIncrement"`
-	SSOID     string         `gorm:"column:sso_id;size:128;not null;uniqueIndex:uk_sso_id"`
-	Username  string         `gorm:"size:64;not null"`
-	Email     string         `gorm:"size:128;not null;uniqueIndex:uk_email"`
-	Role      string         `gorm:"type:enum('admin','user');not null;default:user"`
-	Status    string         `gorm:"type:enum('active','disabled');not null;default:active"`
-	CreatedAt time.Time      `gorm:"not null"`
-	UpdatedAt time.Time      `gorm:"not null"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	ID           uint64  `gorm:"primaryKey;autoIncrement"`
+	AuthSource   string  `gorm:"type:enum('logto','local');not null;default:logto"`
+	SSOID        *string `gorm:"column:sso_id;size:128;uniqueIndex:uk_sso_id"`
+	Username     string  `gorm:"size:64;not null;uniqueIndex:uk_username"`
+	Email        *string `gorm:"size:128;uniqueIndex:uk_email"`
+	PasswordHash *string `gorm:"size:255"`
+	Role         string  `gorm:"type:enum('super_admin','admin','user');not null;default:user"`
+	Status       string  `gorm:"type:enum('pending','active','disabled');not null;default:pending"`
+	LastLoginAt  *time.Time
+	CreatedAt    time.Time      `gorm:"not null"`
+	UpdatedAt    time.Time      `gorm:"not null"`
+	DeletedAt    gorm.DeletedAt `gorm:"index"`
+}
+
+type AuthSession struct {
+	ID         uint64    `gorm:"primaryKey;autoIncrement"`
+	UserID     uint64    `gorm:"not null;index:idx_session_user"`
+	TokenHash  string    `gorm:"size:64;not null;uniqueIndex:uk_token_hash"`
+	ExpiresAt  time.Time `gorm:"not null;index:idx_session_expire"`
+	LastSeenAt *time.Time
+	CreatedAt  time.Time `gorm:"not null"`
+}
+
+type InstallationState struct {
+	ID            uint8 `gorm:"primaryKey"`
+	Installed     bool  `gorm:"not null;default:false"`
+	OwnerUserID   *uint64
+	SchemaVersion uint `gorm:"not null;default:1"`
+	InstalledAt   *time.Time
+	UpdatedAt     time.Time `gorm:"not null"`
+}
+
+type AuditLog struct {
+	ID         uint64          `gorm:"primaryKey;autoIncrement"`
+	UserID     *uint64         `gorm:"index:idx_audit_user"`
+	Action     string          `gorm:"size:64;not null;index:idx_audit_action"`
+	TargetType *string         `gorm:"size:64"`
+	TargetID   *string         `gorm:"size:128"`
+	Detail     json.RawMessage `gorm:"type:json"`
+	IP         *string         `gorm:"size:45"`
+	CreatedAt  time.Time       `gorm:"not null;index:idx_audit_created"`
 }
 
 type Domain struct {

@@ -4,7 +4,7 @@
 
 - 基础路径：`/api/v1`（用户 API）、`/api/admin`（管理 API）
 - 数据格式：JSON，Content-Type: `application/json`
-- 认证方式：`Authorization: Bearer <access_token>`（Logto 签发的 JWT）
+- 认证方式：Logto Bearer Token 或本地账号 HttpOnly 会话 Cookie；最终角色从 GravityLink `users` 表读取
 - 时间格式：ISO 8601，`2026-07-02T15:04:05Z`
 - 分页：`?page=1&page_size=20`，响应体包含 `total`
 
@@ -56,12 +56,23 @@
 | 方法 | 路径 | 说明 |
 |-----|------|------|
 | GET | `/api/setup/status` | 获取是否需要初始化、非敏感默认值和缺失项 |
-| POST | `/api/setup/test-database` | 测试 MySQL 与 Redis 连接 |
-| POST | `/api/setup/complete` | 校验、持久化配置并启动业务服务；成功后锁定 |
+| POST | `/api/setup/auth/logto/check` | 检查 OIDC Discovery 与 Logto 配置 |
+| POST | `/api/setup/auth/logto/claim` | 校验首次登录 Token 并暂存超级管理员身份 |
+| POST | `/api/setup/auth/local` | 创建本地初始账号的密码哈希 |
+| POST | `/api/setup/database/test` | 测试 MySQL 与 Redis 连接 |
+| POST | `/api/setup/complete` | 初始化/迁移数据库、创建超级管理员并启动服务 |
 
 初始化 API 不经过 Logto，因为此时认证服务尚未配置；它只存在于管理端监听器，并在初始化完成后拒绝所有写操作。production 环境不能通过初始化 API 关闭鉴权。
 
 ### 用户 API（需登录，`/api/v1/`）
+
+#### 身份认证
+
+| 方法 | 路径 | 说明 |
+|-----|------|------|
+| POST | `/api/v1/auth/local/login` | 本地账号登录并创建 HttpOnly 会话 |
+| POST | `/api/v1/auth/logout` | 撤销本地会话并清理 Cookie |
+| GET | `/api/v1/auth/me` | 返回数据库中的账号、角色和状态 |
 
 #### 链接管理
 
@@ -122,7 +133,7 @@
 |-----|------|------|
 | GET | `/api/admin/users` | 用户列表 |
 | PUT | `/api/admin/users/:id/role` | 修改用户角色 |
-| POST | `/api/admin/users/:id/disable` | 禁用用户 |
+| PUT | `/api/admin/users/:id/status` | 授权、禁用用户 |
 
 #### 系统配置
 
@@ -130,6 +141,7 @@
 |-----|------|------|
 | GET | `/api/admin/configs` | 获取系统配置 |
 | PUT | `/api/admin/configs` | 更新系统配置 |
+| POST | `/api/admin/system/reset` | 超级管理员清除配置并恢复初始化态 |
 
 ### 认证与公网提示页
 

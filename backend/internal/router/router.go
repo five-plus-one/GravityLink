@@ -36,6 +36,7 @@ func New(deps Dependencies) *gin.Engine {
 	linkService := service.NewLinkService(deps.DB, cache.NewLinkCache(deps.Redis), routingService)
 	domainService := service.NewDomainService(deps.DB, domainCache)
 	landingService := service.NewLandingService(deps.DB, routingService)
+	authService := service.NewAuthService(deps.DB)
 	publicPageService := service.NewPublicPageService(deps.DB)
 	systemConfigService := service.NewSystemConfigService(deps.DB)
 	statService := service.NewStatService(deps.DB, deps.Redis)
@@ -43,16 +44,16 @@ func New(deps Dependencies) *gin.Engine {
 
 	api := engine.Group("/api/v1")
 	registerHealthRoutes(api, deps)
-	registerAuthRoutes(api, deps)
+	registerAuthRoutes(api, deps, authService)
 
 	protectedAPI := api.Group("")
-	protectedAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger))
+	protectedAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger, deps.DB))
 	registerLinkRoutes(protectedAPI, linkService, deps.Config)
 	registerLandingRoutes(protectedAPI, landingService, deps.Config)
 	registerStatRoutes(protectedAPI, statService)
 
 	adminAPI := engine.Group("/api/admin")
-	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger), middleware.RequireRole("admin"))
+	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger, deps.DB), middleware.RequireRole("admin"))
 	registerDomainRoutes(adminAPI, domainService)
 	registerConfigRoutes(adminAPI, systemConfigService, deps)
 

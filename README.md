@@ -123,6 +123,14 @@ http://127.0.0.1:8081/auth/callback
 
 开发环境可以保留 `AUTH_DISABLED=true`，管理端会进入开发模式；生产环境不应开启。
 
+### 首次初始化
+
+管理端会先检查运行配置。数据库、Redis 或 Logto 尚未配置，或依赖连接失败时，访问管理端端口会自动进入首次初始化向导；无需先编辑容器内文件，也不会显示无效的 Logto 登录按钮。
+
+向导支持测试 MySQL/Redis 连接并配置 Logto。完成后配置写入 `CONFIG_FILE`（容器默认 `/data/gravitylink.json`），官方 compose 已为 `/data` 挂载独立的 `gravitylink_config` volume。业务路由会在当前进程内启用，不需要重启容器。初始化完成后匿名 setup 写接口自动锁定。
+
+使用官方 compose 时 MySQL 表结构由 `deploy/mysql/init/001_schema.sql` 自动导入；连接外部 MySQL 时，请先导入该文件。
+
 ### 访问短链接
 
 管理端只是后台，不应对公网用户开放。公网用户访问的是后端承接的入口/落地域名：

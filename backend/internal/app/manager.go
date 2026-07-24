@@ -4,18 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	"gravitylink/backend/internal/config"
 	"gravitylink/backend/internal/database"
+	"gravitylink/backend/internal/middleware"
+	"gravitylink/backend/internal/model"
 	"gravitylink/backend/internal/router"
+	"gravitylink/backend/internal/service"
 	"gravitylink/backend/internal/worker"
 )
 
@@ -61,6 +66,7 @@ type redisInput struct {
 }
 
 type authInput struct {
+	Mode         string   `json:"mode"`
 	Disabled     bool     `json:"disabled"`
 	Issuer       string   `json:"issuer"`
 	AppID        string   `json:"app_id"`
@@ -69,6 +75,16 @@ type authInput struct {
 	Scopes       string   `json:"scopes"`
 	AdminBaseURL string   `json:"admin_base_url"`
 	AllowedRoles []string `json:"allowed_roles"`
+	Username     string   `json:"username"`
+	Email        string   `json:"email"`
+	Password     string   `json:"password"`
+}
+
+type oidcDiscovery struct {
+	Issuer                string `json:"issuer"`
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+	JWKSURI               string `json:"jwks_uri"`
 }
 
 func NewManager(cfg config.Config, logger *slog.Logger) *Manager {
@@ -88,6 +104,10 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) SetupHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/setup/status", m.setupStatus)
+	mux.HandleFunc("POST /api/setup/auth/logto/check", m.checkLogto)
+	mux.HandleFunc("POST /api/setup/auth/logto/claim", m.claimLogto)
+	mux.HandleFunc("POST /api/setup/auth/local", m.configureLocalOwner)
+	mux.HandleFunc("POST /api/setup/database/test", m.testDatabase)
 	mux.HandleFunc("POST /api/setup/test-database", m.testDatabase)
 	mux.HandleFunc("POST /api/setup/complete", m.completeSetup)
 	return mux
@@ -137,9 +157,28 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 			}
 		}
 	}()
-	if !db.Migrator().HasTable("system_configs") || !db.Migrator().HasTable("links") {
-		m.reason = "MySQL is reachable, but the GravityLink schema is missing"
-		return fmt.Errorf("gravitylink database schema is not initialized")
+	if err := database.EnsureSchema(db); err != nil {
+		m.reason = "MySQL schema initialization failed: " + err.Error()
+		return fmt.Errorf("initialize schema: %w", err)
+	}
+	authService := service.NewAuthService(db)
+	if persist {
+		if _, err := authService.CreateBootstrapOwner(cfg); err != nil {
+			m.reason = "Create super administrator failed: " + err.Error()
+			return fmt.Errorf("create super administrator: %w", err)
+		}
+		cfg.InstallationComplete = true
+		cfg.BootstrapVerified = false
+		cfg.BootstrapSubject = ""
+		cfg.BootstrapUsername = ""
+		cfg.BootstrapEmail = ""
+		cfg.BootstrapPassword = ""
+	} else if !cfg.AuthDisabled {
+		installed, err := authService.Installed()
+		if err != nil || !installed {
+			m.reason = "Administrator initialization is incomplete"
+			return fmt.Errorf("administrator initialization is incomplete")
+		}
 	}
 
 	redisClient, err := database.ConnectRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
@@ -195,11 +234,143 @@ func (m *Manager) setupStatus(w http.ResponseWriter, _ *http.Request) {
 			"addr_configured": m.cfg.RedisAddr != "",
 		},
 		"auth": map[string]any{
-			"disabled": m.cfg.AuthDisabled, "issuer": m.cfg.LogtoIssuer, "app_id": m.cfg.LogtoAppID,
+			"mode": m.cfg.AuthMode, "disabled": m.cfg.AuthDisabled, "issuer": m.cfg.LogtoIssuer, "app_id": m.cfg.LogtoAppID,
 			"audience": m.cfg.LogtoAudience, "jwks_url": m.cfg.LogtoJWKSURL, "scopes": m.cfg.LogtoScopes,
 			"admin_base_url": m.cfg.AdminBaseURL, "allowed_roles": m.cfg.AdminAllowedRoles,
+			"verified": m.cfg.BootstrapVerified, "owner_username": m.cfg.BootstrapUsername,
+			"owner_email": m.cfg.BootstrapEmail,
 		},
 	})
+}
+
+func (m *Manager) checkLogto(w http.ResponseWriter, r *http.Request) {
+	if m.isInitialized() {
+		writeError(w, http.StatusConflict, 4409, "setup_locked")
+		return
+	}
+	var input setupRequest
+	if err := decodeRequest(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, 4000, err.Error())
+		return
+	}
+	cfg := m.currentConfig()
+	applyAuthInput(&cfg, input.Auth)
+	cfg.AuthMode = model.AuthSourceLogto
+	cfg.AuthDisabled = false
+	if cfg.LogtoIssuer == "" || cfg.LogtoAppID == "" || cfg.LogtoAudience == "" || cfg.AdminBaseURL == "" {
+		writeError(w, http.StatusBadRequest, 4004, "Logto Issuer、App ID、Audience 和管理端 URL 均为必填项")
+		return
+	}
+
+	discoveryURL := strings.TrimRight(cfg.LogtoIssuer, "/") + "/.well-known/openid-configuration"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, discoveryURL, nil)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, 4004, err.Error())
+		return
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, 4004, "无法连接 Logto："+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadRequest, 4004, fmt.Sprintf("Logto Discovery 返回 HTTP %d", resp.StatusCode))
+		return
+	}
+	var discovery oidcDiscovery
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&discovery); err != nil {
+		writeError(w, http.StatusBadRequest, 4004, "Logto Discovery 响应无效")
+		return
+	}
+	if discovery.AuthorizationEndpoint == "" || discovery.TokenEndpoint == "" || discovery.JWKSURI == "" {
+		writeError(w, http.StatusBadRequest, 4004, "Logto Discovery 缺少必要端点")
+		return
+	}
+	if cfg.LogtoJWKSURL == "" {
+		cfg.LogtoJWKSURL = discovery.JWKSURI
+	}
+	cfg.BootstrapVerified = false
+	if err := m.saveDraft(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, 5000, "保存 Logto 配置失败："+err.Error())
+		return
+	}
+	writeOK(w, map[string]any{
+		"issuer": discovery.Issuer, "authorization_endpoint": discovery.AuthorizationEndpoint,
+		"token_endpoint": discovery.TokenEndpoint, "jwks_uri": discovery.JWKSURI,
+		"redirect_uri": strings.TrimRight(cfg.AdminBaseURL, "/") + "/setup/auth/callback",
+	})
+}
+
+func (m *Manager) claimLogto(w http.ResponseWriter, r *http.Request) {
+	if m.isInitialized() {
+		writeError(w, http.StatusConflict, 4409, "setup_locked")
+		return
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, 4401, "missing Logto access token")
+		return
+	}
+	cfg := m.currentConfig()
+	if cfg.AuthMode != model.AuthSourceLogto {
+		writeError(w, http.StatusBadRequest, 4004, "Logto 尚未配置")
+		return
+	}
+	identity, err := middleware.VerifyToken(r.Context(), cfg, token)
+	if err != nil || identity.Subject == "" {
+		writeError(w, http.StatusUnauthorized, 4401, "Logto 身份验证失败")
+		return
+	}
+	cfg.BootstrapVerified = true
+	cfg.BootstrapSubject = identity.Subject
+	cfg.BootstrapUsername = firstNonEmpty(identity.Username, identity.Email, "owner")
+	cfg.BootstrapEmail = identity.Email
+	cfg.BootstrapPassword = ""
+	if err := m.saveDraft(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, 5000, "保存管理员身份失败："+err.Error())
+		return
+	}
+	writeOK(w, map[string]any{"verified": true, "username": cfg.BootstrapUsername, "email": cfg.BootstrapEmail})
+}
+
+func (m *Manager) configureLocalOwner(w http.ResponseWriter, r *http.Request) {
+	if m.isInitialized() {
+		writeError(w, http.StatusConflict, 4409, "setup_locked")
+		return
+	}
+	var input setupRequest
+	if err := decodeRequest(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, 4000, err.Error())
+		return
+	}
+	username := strings.TrimSpace(input.Auth.Username)
+	if len(username) < 3 {
+		writeError(w, http.StatusBadRequest, 4005, "用户名至少需要 3 个字符")
+		return
+	}
+	passwordHash, err := service.HashPassword(input.Auth.Password)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, 4005, "密码至少需要 10 个字符")
+		return
+	}
+	cfg := m.currentConfig()
+	cfg.AuthMode = model.AuthSourceLocal
+	cfg.AuthDisabled = false
+	cfg.BootstrapVerified = true
+	cfg.BootstrapSubject = ""
+	cfg.BootstrapUsername = username
+	cfg.BootstrapEmail = strings.TrimSpace(input.Auth.Email)
+	cfg.BootstrapPassword = passwordHash
+	if input.Auth.AdminBaseURL != "" {
+		cfg.AdminBaseURL = strings.TrimRight(strings.TrimSpace(input.Auth.AdminBaseURL), "/")
+	}
+	if err := m.saveDraft(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, 5000, "保存本地管理员配置失败："+err.Error())
+		return
+	}
+	writeOK(w, map[string]any{"verified": true, "username": username, "email": cfg.BootstrapEmail})
 }
 
 func (m *Manager) testDatabase(w http.ResponseWriter, r *http.Request) {
@@ -267,14 +438,9 @@ func (m *Manager) configFromInput(input setupRequest) config.Config {
 	cfg.RedisAddr = strings.TrimSpace(input.Redis.Addr)
 	cfg.RedisPassword = input.Redis.Password
 	cfg.RedisDB = input.Redis.DB
-	cfg.AuthDisabled = input.Auth.Disabled
-	cfg.LogtoIssuer = strings.TrimRight(strings.TrimSpace(input.Auth.Issuer), "/")
-	cfg.LogtoAppID = strings.TrimSpace(input.Auth.AppID)
-	cfg.LogtoAudience = strings.TrimSpace(input.Auth.Audience)
-	cfg.LogtoJWKSURL = strings.TrimSpace(input.Auth.JWKSURL)
-	cfg.LogtoScopes = strings.TrimSpace(input.Auth.Scopes)
-	cfg.AdminBaseURL = strings.TrimRight(strings.TrimSpace(input.Auth.AdminBaseURL), "/")
-	cfg.AdminAllowedRoles = cleanList(input.Auth.AllowedRoles)
+	if input.Auth.Mode != "" || input.Auth.Issuer != "" || input.Auth.Disabled {
+		applyAuthInput(&cfg, input.Auth)
+	}
 	cfg.RebuildConnections()
 	return cfg
 }
@@ -285,9 +451,36 @@ func (m *Manager) isInitialized() bool {
 	return m.initialized
 }
 
+func (m *Manager) currentConfig() config.Config {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg
+}
+
+func (m *Manager) saveDraft(cfg config.Config) error {
+	cfg.ResetPending = false
+	if err := config.SaveFile(cfg.ConfigFile, cfg); err != nil {
+		return err
+	}
+	if err := config.ClearResetMarker(cfg.ConfigFile); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.cfg = cfg
+	m.reason = ""
+	m.mu.Unlock()
+	return nil
+}
+
 func validateConfig(cfg config.Config) error {
 	if cfg.AppEnv == "production" && cfg.AuthDisabled {
 		return fmt.Errorf("生产环境不能关闭身份认证")
+	}
+	if cfg.ResetPending {
+		return fmt.Errorf("system reset is pending")
+	}
+	if !cfg.AuthDisabled && !cfg.InstallationComplete && !cfg.BootstrapVerified {
+		return fmt.Errorf("请先完成管理员身份验证")
 	}
 	if missing := cfg.MissingRuntimeConfig(); len(missing) > 0 {
 		return fmt.Errorf("配置不完整：%s", strings.Join(missing, ", "))
@@ -310,8 +503,34 @@ func cleanList(values []string) []string {
 	return result
 }
 
+func applyAuthInput(cfg *config.Config, input authInput) {
+	if input.Mode != "" {
+		cfg.AuthMode = strings.TrimSpace(input.Mode)
+	}
+	cfg.AuthDisabled = input.Disabled
+	cfg.LogtoIssuer = strings.TrimRight(strings.TrimSpace(input.Issuer), "/")
+	cfg.LogtoAppID = strings.TrimSpace(input.AppID)
+	cfg.LogtoAudience = strings.TrimSpace(input.Audience)
+	cfg.LogtoJWKSURL = strings.TrimSpace(input.JWKSURL)
+	cfg.LogtoScopes = strings.TrimSpace(input.Scopes)
+	if cfg.LogtoScopes == "" {
+		cfg.LogtoScopes = "openid profile email"
+	}
+	cfg.AdminBaseURL = strings.TrimRight(strings.TrimSpace(input.AdminBaseURL), "/")
+	cfg.AdminAllowedRoles = cleanList(input.AllowedRoles)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
 func decodeRequest(r *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10))
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("请求格式错误：%w", err)
