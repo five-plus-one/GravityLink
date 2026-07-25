@@ -169,6 +169,20 @@ func (s *AuthService) LoginLocal(username string, password string) (model.User, 
 	return user, token, nil
 }
 
+func (s *AuthService) VerifyLocalPassword(userID uint64, password string) error {
+	var user model.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return ErrInvalidCredentials
+	}
+	if user.AuthSource != model.AuthSourceLocal || user.PasswordHash == nil {
+		return ErrInvalidCredentials
+	}
+	if bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)) != nil {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
 func (s *AuthService) ResolveSession(token string) (model.User, error) {
 	var user model.User
 	hash := hashToken(token)

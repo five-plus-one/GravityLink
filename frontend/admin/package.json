@@ -9,10 +9,11 @@
     "build": "vue-tsc --noEmit && vite build"
   },
   "dependencies": {
+    "@lucide/vue": "^1.26.0",
     "@vitejs/plugin-vue": "^5.2.1",
-    "echarts": "^5.6.0",
     "vite": "^6.0.7",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

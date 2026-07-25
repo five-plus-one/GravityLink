@@ -107,6 +107,7 @@ REDIS_DB=0
 
 ```env
 AUTH_DISABLED=false
+AUTH_MODE=logto
 LOGTO_ISSUER=https://logto.example.com/oidc
 LOGTO_APP_ID=your-spa-app-id
 LOGTO_AUDIENCE=https://gravitylink.example.com/api
@@ -118,16 +119,18 @@ Logto SPA 应用需要把回调地址加入允许列表：
 
 ```text
 https://admin.example.com/auth/callback
+https://admin.example.com/setup/auth/callback
 http://127.0.0.1:8081/auth/callback
+http://127.0.0.1:8081/setup/auth/callback
 ```
 
 开发环境可以保留 `AUTH_DISABLED=true`，管理端会进入开发模式；生产环境不应开启。
 
 ### 首次初始化
 
-管理端会先检查运行配置。数据库、Redis 或 Logto 尚未配置，或依赖连接失败时，访问管理端端口会自动进入首次初始化向导；无需先编辑容器内文件，也不会显示无效的 Logto 登录按钮。
+管理端会先检查安装状态。尚未完成管理员认领、数据库或 Redis 配置缺失、依赖连接失败时，访问管理端端口会自动进入首次初始化向导；无需先编辑容器内文件，也不会显示无效的登录按钮。
 
-向导支持测试 MySQL/Redis 连接并配置 Logto。完成后配置写入 `CONFIG_FILE`（容器默认 `/data/gravitylink.json`），官方 compose 已为 `/data` 挂载独立的 `gravitylink_config` volume。业务路由会在当前进程内启用，不需要重启容器。初始化完成后匿名 setup 写接口自动锁定。
+向导先选择 Logto 或本地账号。Logto 模式会检查 OIDC Discovery 并要求完成一次真实登录；本地模式会创建仅保存 bcrypt 哈希的超级管理员。身份验证完成后再测试 MySQL/Redis，并在空库中自动创建表结构。最终配置写入 `CONFIG_FILE`（容器默认 `/data/gravitylink.json`），官方 compose 已为 `/data` 挂载独立的 `gravitylink_config` volume。业务路由会在当前进程内启用，不需要重启容器。初始化完成后匿名 setup 写接口自动锁定。
 
 使用官方 compose 时 MySQL 表结构由 `deploy/mysql/init/001_schema.sql` 自动导入；连接外部 MySQL 时，请先导入该文件。
 

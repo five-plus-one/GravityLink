@@ -120,6 +120,17 @@ export interface ConfigListData {
   auth: AuthConfigStatus;
 }
 
+export interface UserItem {
+  id: number;
+  auth_source: 'logto' | 'local';
+  username: string;
+  email: string | null;
+  role: 'super_admin' | 'admin' | 'user';
+  status: 'pending' | 'active' | 'disabled';
+  last_login_at: string | null;
+  created_at: string;
+}
+
 export async function listLinks(): Promise<LinkListData> {
   return request<LinkListData>('/api/v1/links');
 }
@@ -182,7 +193,32 @@ export async function updateSystemConfigs(configs: Record<string, string>): Prom
   });
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function listUsers(): Promise<{ items: UserItem[]; total: number }> {
+  return request('/api/admin/users');
+}
+
+export async function updateUserRole(id: number, role: 'admin' | 'user'): Promise<{ updated: boolean }> {
+  return request(`/api/admin/users/${id}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function updateUserStatus(id: number, status: 'active' | 'disabled'): Promise<{ updated: boolean }> {
+  return request(`/api/admin/users/${id}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function resetSystem(confirmation: string, password = ''): Promise<{ setup_required: boolean }> {
+  return request('/api/admin/system/reset', {
+    method: 'POST',
+    body: JSON.stringify({ confirmation, password }),
+  });
+}
+
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
 
@@ -194,6 +230,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers,
+    credentials: 'include',
   });
   const body = (await response.json()) as ApiResponse<T>;
   if (!response.ok || body.code !== 0) {

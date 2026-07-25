@@ -40,18 +40,22 @@ func EnsureSchema(db *gorm.DB) error {
 		&model.AuthSession{},
 		&model.InstallationState{},
 		&model.AuditLog{},
-		&model.Domain{},
-		&model.Link{},
-		&model.ChannelConfig{},
-		&model.RoutingStrategy{},
-		&model.RoutingTarget{},
-		&model.LandingPage{},
-		&model.AccessLog{},
-		&model.StatDaily{},
-		&model.StatHourly{},
-		&model.StatGeo{},
-		&model.StatDevice{},
 		&model.SystemConfig{},
+	}
+	if !db.Migrator().HasTable(&model.Link{}) {
+		models = append(models,
+			&model.Domain{},
+			&model.Link{},
+			&model.ChannelConfig{},
+			&model.RoutingStrategy{},
+			&model.RoutingTarget{},
+			&model.LandingPage{},
+			&model.AccessLog{},
+			&model.StatDaily{},
+			&model.StatHourly{},
+			&model.StatGeo{},
+			&model.StatDevice{},
+		)
 	}
 	if err := db.AutoMigrate(models...); err != nil {
 		return err

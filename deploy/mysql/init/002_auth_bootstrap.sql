@@ -1,26 +1,3 @@
-ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS auth_source ENUM('logto','local') NOT NULL DEFAULT 'logto' AFTER id,
-    MODIFY COLUMN sso_id VARCHAR(128) NULL,
-    MODIFY COLUMN email VARCHAR(128) NULL,
-    ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255) NULL AFTER email,
-    MODIFY COLUMN role ENUM('super_admin','admin','user') NOT NULL DEFAULT 'user',
-    MODIFY COLUMN status ENUM('pending','active','disabled') NOT NULL DEFAULT 'pending',
-    ADD COLUMN IF NOT EXISTS last_login_at DATETIME(3) NULL AFTER status;
-
-SET @username_index_exists = (
-    SELECT COUNT(1)
-    FROM information_schema.statistics
-    WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'uk_username'
-);
-SET @username_index_sql = IF(
-    @username_index_exists = 0,
-    'CREATE UNIQUE INDEX uk_username ON users (username)',
-    'SELECT 1'
-);
-PREPARE username_index_stmt FROM @username_index_sql;
-EXECUTE username_index_stmt;
-DEALLOCATE PREPARE username_index_stmt;
-
 CREATE TABLE IF NOT EXISTS auth_sessions (
     id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id      BIGINT UNSIGNED NOT NULL,

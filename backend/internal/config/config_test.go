@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -72,5 +73,32 @@ func TestLoadNonEmptyEnvironmentOverridesPersistedValues(t *testing.T) {
 	}
 	if loaded.AuthDisabled || loaded.LogtoIssuer != "https://env.example.com/oidc" {
 		t.Fatalf("environment did not override auth config: %#v", loaded)
+	}
+}
+
+func TestResetMarkerForcesSetupState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gravitylink.json")
+	persisted := Config{
+		AppEnv: "production", ConfigFile: path, AuthMode: "local",
+		InstallationComplete: true, MySQLDSN: "user:pass@tcp(mysql:3306)/gravitylink",
+		RedisAddr: "redis:6379",
+	}
+	if err := SaveFile(path, persisted); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := MarkReset(path); err != nil {
+		t.Fatalf("mark reset: %v", err)
+	}
+	t.Setenv("CONFIG_FILE", path)
+
+	loaded := Load()
+	if !loaded.ResetPending || loaded.InstallationComplete {
+		t.Fatalf("reset marker did not force setup state: %#v", loaded)
+	}
+	if err := ClearResetMarker(path); err != nil {
+		t.Fatalf("clear reset marker: %v", err)
+	}
+	if _, err := os.Stat(path + ".reset"); !os.IsNotExist(err) {
+		t.Fatalf("reset marker still exists: %v", err)
 	}
 }

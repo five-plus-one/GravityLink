@@ -133,6 +133,70 @@ func (m *Manager) Shutdown() {
 	}
 }
 
+func (m *Manager) Reset(ctx context.Context, userID uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.initialized || m.db == nil {
+		return fmt.Errorf("system is not initialized")
+	}
+	if err := config.MarkReset(m.cfg.ConfigFile); err != nil {
+		return fmt.Errorf("write reset marker: %w", err)
+	}
+	err := m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		detail, _ := json.Marshal(map[string]any{"preserved_business_data": true})
+		if err := tx.Create(&model.AuditLog{
+			UserID: &userID, Action: "system.reset", Detail: detail,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.AuthSession{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.SystemConfig{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Model(&model.User{}).
+			Updates(map[string]any{"role": model.UserRoleUser, "status": model.StatusDisabled}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.InstallationState{}).Where("id = ?", 1).Updates(map[string]any{
+			"installed": false, "owner_user_id": nil, "installed_at": nil,
+		}).Error
+	})
+	if err != nil {
+		_ = config.ClearResetMarker(m.cfg.ConfigFile)
+		return err
+	}
+
+	if m.stopWorkers != nil {
+		m.stopWorkers()
+		m.stopWorkers = nil
+	}
+	if m.redis != nil {
+		_ = m.redis.Close()
+		m.redis = nil
+	}
+	if m.db != nil {
+		if sqlDB, dbErr := m.db.DB(); dbErr == nil {
+			_ = sqlDB.Close()
+		}
+		m.db = nil
+	}
+	if err := config.RemoveFile(m.cfg.ConfigFile); err != nil {
+		return fmt.Errorf("remove runtime config: %w", err)
+	}
+	next := config.Load()
+	next.ResetPending = true
+	next.InstallationComplete = false
+	next.BootstrapVerified = false
+	m.cfg = next
+	m.initialized = false
+	m.reason = "系统配置已清除，请重新初始化"
+	m.handler.Store(handlerHolder{handler: http.HandlerFunc(publicSetupRequired)})
+	m.logger.Warn("system configuration reset", "user_id", userID)
+	return nil
+}
+
 func (m *Manager) activate(cfg config.Config, persist bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -163,9 +227,11 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 	}
 	authService := service.NewAuthService(db)
 	if persist {
-		if _, err := authService.CreateBootstrapOwner(cfg); err != nil {
-			m.reason = "Create super administrator failed: " + err.Error()
-			return fmt.Errorf("create super administrator: %w", err)
+		if !cfg.AuthDisabled {
+			if _, err := authService.CreateBootstrapOwner(cfg); err != nil {
+				m.reason = "Create super administrator failed: " + err.Error()
+				return fmt.Errorf("create super administrator: %w", err)
+			}
 		}
 		cfg.InstallationComplete = true
 		cfg.BootstrapVerified = false
@@ -193,7 +259,9 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 		}
 	}()
 
-	engine := router.New(router.Dependencies{Config: cfg, DB: db, Redis: redisClient, Logger: m.logger})
+	engine := router.New(router.Dependencies{
+		Config: cfg, DB: db, Redis: redisClient, Logger: m.logger, ResetSystem: m.Reset,
+	})
 	if persist {
 		if err := config.SaveFile(cfg.ConfigFile, cfg); err != nil {
 			m.reason = "Failed to save configuration: " + err.Error()
@@ -477,7 +545,7 @@ func validateConfig(cfg config.Config) error {
 		return fmt.Errorf("生产环境不能关闭身份认证")
 	}
 	if cfg.ResetPending {
-		return fmt.Errorf("system reset is pending")
+		return fmt.Errorf("系统配置已清除，请重新完成初始化")
 	}
 	if !cfg.AuthDisabled && !cfg.InstallationComplete && !cfg.BootstrapVerified {
 		return fmt.Errorf("请先完成管理员身份验证")
@@ -559,5 +627,5 @@ func publicSetupRequired(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	_, _ = w.Write([]byte(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GravityLink 尚未初始化</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#f4f7f8;color:#172026}.box{max-width:560px;padding:32px}.mark{width:44px;height:44px;display:grid;place-items:center;border-radius:8px;background:#188d7c;color:white;font-weight:800}h1{font-size:26px}p{color:#60727a;line-height:1.7}</style><main class="box"><div class="mark">G</div><h1>GravityLink 尚未初始化</h1><p>请由管理员访问管理端口完成数据库、Redis 与 Logto 配置。</p></main></html>`))
+	_, _ = w.Write([]byte(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GravityLink 尚未初始化</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#f4f7f8;color:#172026}.box{max-width:560px;padding:32px}.mark{width:44px;height:44px;display:grid;place-items:center;border-radius:8px;background:#188d7c;color:white;font-weight:800}h1{font-size:26px}p{color:#60727a;line-height:1.7}</style><main class="box"><div class="mark">G</div><h1>GravityLink 尚未初始化</h1><p>请由管理员访问管理端口，完成管理员身份、数据库与 Redis 配置。</p></main></html>`))
 }

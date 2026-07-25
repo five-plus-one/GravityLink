@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
@@ -14,10 +15,11 @@ import (
 )
 
 type Dependencies struct {
-	Config config.Config
-	DB     *gorm.DB
-	Redis  *redis.Client
-	Logger *slog.Logger
+	Config      config.Config
+	DB          *gorm.DB
+	Redis       *redis.Client
+	Logger      *slog.Logger
+	ResetSystem func(context.Context, uint64) error
 }
 
 func New(deps Dependencies) *gin.Engine {
@@ -56,6 +58,8 @@ func New(deps Dependencies) *gin.Engine {
 	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger, deps.DB), middleware.RequireRole("admin"))
 	registerDomainRoutes(adminAPI, domainService)
 	registerConfigRoutes(adminAPI, systemConfigService, deps)
+	registerUserRoutes(adminAPI, deps.DB)
+	registerSystemRoutes(adminAPI, deps)
 
 	registerAssetRoutes(engine)
 	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, publicPageService, accessRecorder)
