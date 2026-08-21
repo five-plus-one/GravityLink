@@ -255,6 +255,10 @@ function editAuth() {
   step.value = 2;
 }
 
+function useCurrentOrigin() {
+  form.adminBaseURL = window.location.origin;
+}
+
 async function copyValue(label: string, value: string) {
   if (!value) return;
   try {
@@ -391,7 +395,7 @@ function messageOf(err: unknown): string {
                 <template #label>
                   <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
                     <span>管理端公开 URL</span>
-                    <NButton text type="primary" size="tiny" @click="form.adminBaseURL = window.location.origin">使用当前地址</NButton>
+                    <NButton text type="primary" size="tiny" @click="useCurrentOrigin">使用当前地址</NButton>
                   </div>
                 </template>
                 <NInput v-model:value="form.adminBaseURL" placeholder="https://admin.example.com" />

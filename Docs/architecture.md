@@ -96,18 +96,36 @@ backend/
 
 ```
 frontend/
-├── admin/                       # 管理端 Vue 3 项目
-│   ├── src/
-│   │   ├── views/
-│   │   │   ├── dashboard/       # 统计看板
-│   │   │   ├── links/           # 短链接管理
-│   │   │   ├── channels/        # 渠道码管理
-│   │   │   ├── live-qr/         # 群活码管理
-│   │   │   ├── landing/         # 落地页管理
-│   │   │   └── domains/         # 域名管理
-│   │   └── components/
-└── landing/                     # 落地页模板/样式源文件（轻量）
+└── admin/                       # 管理端 Vue 3 项目（唯一前端工程）
+    ├── src/
+    │   ├── layouts/
+    │   │   └── AdminLayout.vue  # 侧栏 + 顶栏 + 面包屑布局
+    │   ├── views/               # 全部页面（平铺，无子目录）
+    │   │   ├── LoginView.vue
+    │   │   ├── SetupView.vue    # 初始化向导
+    │   │   ├── AuthCallbackView.vue
+    │   │   ├── NotFoundView.vue
+    │   │   ├── DashboardView.vue
+    │   │   ├── LinksView.vue
+    │   │   ├── DomainsView.vue
+    │   │   ├── LandingPagesView.vue
+    │   │   ├── StatsView.vue
+    │   │   ├── UsersView.vue
+    │   │   └── SettingsView.vue
+    │   ├── stores/              # Pinia 状态（auth / domain / setup）
+    │   ├── styles/              # 设计令牌 + 基础样式
+    │   │   ├── tokens.css       # CSS 变量（详见 Docs/ui-design-system.md）
+    │   │   └── base.css
+    │   ├── api.ts               # API 客户端
+    │   ├── auth.ts              # OIDC / 本地认证
+    │   ├── setup.ts             # 初始化向导 API
+    │   ├── echarts.ts           # ECharts 按需引入
+    │   ├── router.ts            # 路由 + 全局守卫
+    │   └── main.ts
+    └── package.json             # Vue 3 + Naive UI + Pinia + ECharts
 ```
+
+落地页与公开页**没有独立前端工程**：模板由 Go `html/template` 渲染（`backend/internal/web/templates/`），共享样式由 `backend/internal/web/landing/gravitylink-landing.css` 通过 `go:embed` 提供。
 
 ### 前端边界
 
@@ -115,7 +133,7 @@ frontend/
 - 公网用户访问短链接时直接进入 Go 后端公开路由：入口域名负责 302 跳转，落地域名负责渲染模板页。
 - 应用容器默认监听两个端口：`8080` 为后端 API/公网短链路由，`8081` 为管理端前端；管理端端口内的 `/api/*` 会转给同一个后端 handler。
 - 管理端通过 Logto OIDC Authorization Code + PKCE 登录，不提供生产可用的手工 token 输入；后端按 JWT 与角色声明执行 RBAC。
-- 短链接直跳不需要单独公网 SPA；只有落地页模板需要公开静态资源，当前由 Go 通过 `go:embed` 托管在 `/assets/landing/*`。
+- 短链接直跳不需要单独公网 SPA；落地页与公开页由 Go `html/template` 渲染（`backend/internal/web/templates/`），共享样式通过 `go:embed` 托管在 `/assets/landing/*`。
 
 ## 请求生命周期
 

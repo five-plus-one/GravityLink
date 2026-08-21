@@ -15,7 +15,7 @@ import (
 
 func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *service.DomainCache, links *service.LinkService, landings *service.LandingService, pages *service.PublicPageService, recorder *service.AccessRecorder) {
 	public := engine.Group("/")
-	public.Use(middleware.HostRouter(domains, deps.Config))
+	public.Use(middleware.HostRouter(domains, deps.Config, pages))
 	public.GET("/", publicHome(pages))
 	public.GET("/:code", dispatchByDomainType(deps, links, landings, pages, recorder))
 	engine.NoRoute(func(c *gin.Context) {
@@ -67,13 +67,45 @@ func dispatchByDomainType(deps Dependencies, links *service.LinkService, landing
 			})
 			c.Redirect(result.Status, result.TargetURL)
 		case model.DomainTypeTransit:
-			response.OK(c, gin.H{"handler": "transit", "host": domain.Host, "code": code})
-		case model.DomainTypeLanding:
-			html, status, err := landings.RenderByCode(c.Request.Context(), code)
+			// 中转域：解析目标后渲染中转页（不再返回 JSON 占位）。
+			result, err := links.Resolve(c.Request.Context(), code)
 			if err != nil {
 				writeResolveError(c, err, pages)
 				return
 			}
+			recorder.RecordAsync(service.AccessEvent{
+				LinkID:     result.Link.ID,
+				IP:         c.ClientIP(),
+				UserAgent:  c.Request.UserAgent(),
+				Referer:    c.Request.Referer(),
+				VisitedAt:  deps.Config.Now(),
+				ViaTransit: true,
+			})
+			html, err := landings.RenderTransitPage(result.TargetURL)
+			if err != nil {
+				deps.Logger.Error("render transit page failed", "error", err)
+				response.Error(c, http.StatusInternalServerError, 5000, "render transit page failed")
+				return
+			}
+			c.Header("Cache-Control", "no-store")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+		case model.DomainTypeLanding:
+			html, status, linkID, err := landings.RenderByCode(c.Request.Context(), code)
+			if err != nil {
+				writeResolveError(c, err, pages)
+				return
+			}
+			if linkID > 0 {
+				recorder.RecordAsync(service.AccessEvent{
+					LinkID:     linkID,
+					IP:         c.ClientIP(),
+					UserAgent:  c.Request.UserAgent(),
+					Referer:    c.Request.Referer(),
+					VisitedAt:  deps.Config.Now(),
+					ViaTransit: false,
+				})
+			}
+			c.Header("Cache-Control", "no-store")
 			c.Data(status, "text/html; charset=utf-8", []byte(html))
 		default:
 			deps.Logger.Warn("unsupported domain type", "host", domain.Host, "type", domain.Type)

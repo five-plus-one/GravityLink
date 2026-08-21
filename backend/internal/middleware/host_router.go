@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
 	"gravitylink/backend/internal/config"
@@ -12,7 +10,9 @@ import (
 
 const ContextDomainKey = "gravitylink_domain"
 
-func HostRouter(domains *service.DomainCache, cfg config.Config) gin.HandlerFunc {
+// HostRouter 按 Host 解析域名。未注册的 Host 在生产环境返回品牌化 404 页，
+// 而不是无 body 的浏览器原生错误页。开发环境/认证关闭时回退为入口域以便本地调试。
+func HostRouter(domains *service.DomainCache, cfg config.Config, pages *service.PublicPageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		domain, ok := domains.Get(c.Request.Host)
 		if !ok {
@@ -21,7 +21,9 @@ func HostRouter(domains *service.DomainCache, cfg config.Config) gin.HandlerFunc
 				c.Next()
 				return
 			}
-			c.AbortWithStatus(http.StatusNotFound)
+			html, status := pages.NotFound(c.Request.Context())
+			c.Data(status, "text/html; charset=utf-8", []byte(html))
+			c.Abort()
 			return
 		}
 

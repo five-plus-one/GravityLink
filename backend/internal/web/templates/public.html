@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/assets/landing/gravitylink-landing.css">
+</head>
+<body>
+  <main class="landing-page landing-public">
+    <div class="landing-mark">G</div>
+    <h1>{{.Title}}</h1>
+    <p>{{.Message}}</p>
+    {{if .StatusText}}<div class="landing-status">{{.StatusText}}</div>{{end}}
+    <footer class="landing-footer">{{.Footer}}</footer>
+  </main>
+</body>
+</html>

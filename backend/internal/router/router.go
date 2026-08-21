@@ -12,6 +12,7 @@ import (
 	"gravitylink/backend/internal/config"
 	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/service"
+	"gravitylink/backend/internal/web"
 )
 
 type Dependencies struct {
@@ -37,9 +38,10 @@ func New(deps Dependencies) *gin.Engine {
 	routingService := service.NewRoutingService(deps.DB, deps.Redis)
 	linkService := service.NewLinkService(deps.DB, cache.NewLinkCache(deps.Redis), routingService)
 	domainService := service.NewDomainService(deps.DB, domainCache)
-	landingService := service.NewLandingService(deps.DB, routingService)
+	templates := web.MustLoadTemplates()
+	landingService := service.NewLandingService(deps.DB, routingService, templates)
 	authService := service.NewAuthService(deps.DB)
-	publicPageService := service.NewPublicPageService(deps.DB)
+	publicPageService := service.NewPublicPageService(deps.DB, templates)
 	systemConfigService := service.NewSystemConfigService(deps.DB)
 	statService := service.NewStatService(deps.DB, deps.Redis)
 	accessRecorder := service.NewAccessRecorder(deps.Redis)

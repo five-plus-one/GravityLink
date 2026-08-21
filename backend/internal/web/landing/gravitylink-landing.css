@@ -1,8 +1,27 @@
+/**
+ * GravityLink 落地页 / 公开页统一样式
+ * 与管理端共享设计令牌（Docs/ui-design-system.md）。
+ * 主色由后端通过 <style>:root{--color-primary:...}</style> 注入。
+ */
+
 :root {
-  color: #172026;
-  background: #f5f8fa;
-  font-family:
-    "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  --color-primary: #0f766e;
+  --color-primary-hover: #0d655e;
+  --color-bg-page: #f5f7f8;
+  --color-bg-surface: #ffffff;
+  --color-border: #dbe3e6;
+  --color-text-primary: #17222a;
+  --color-text-secondary: #48565e;
+  --color-text-tertiary: #7a8990;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-md: 0 4px 12px rgba(15, 28, 34, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 28, 34, 0.12);
+
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  font-family: Inter, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-synthesis: none;
 }
 
 * {
@@ -14,60 +33,144 @@ body {
   margin: 0;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(245, 248, 250, 0.94)),
-    #f5f8fa;
+  padding: 24px;
+  background: var(--color-bg-page);
+  -webkit-font-smoothing: antialiased;
 }
 
 .landing-page {
   width: min(92vw, 420px);
-  padding: 30px;
+  padding: 32px 28px;
   text-align: center;
-  background: #ffffff;
-  border: 1px solid #dde8ec;
-  border-radius: 8px;
-  box-shadow: 0 14px 34px rgba(20, 35, 45, 0.1);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.landing-mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #14b8a6 0%, var(--color-primary) 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
 }
 
 .landing-logo {
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
-  margin-bottom: 14px;
+  margin: 0 auto 16px;
+  display: block;
 }
 
 .landing-page h1 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 24px;
-  line-height: 1.25;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: var(--color-text-primary);
 }
 
 .landing-page p {
   margin: 0 0 20px;
-  color: #5f7178;
+  color: var(--color-text-secondary);
   line-height: 1.65;
+  font-size: 15px;
+}
+
+.landing-page p:last-of-type {
+  margin-bottom: 0;
 }
 
 .landing-qr {
+  display: block;
   width: min(72vw, 260px);
   height: auto;
-  border-radius: 8px;
+  margin: 8px auto 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 .landing-button {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
-  padding: 0 18px;
-  border-radius: 6px;
+  padding: 0 24px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
   color: #ffffff;
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 15px;
+  transition: background 0.15s ease;
+  border: 0;
+  cursor: pointer;
+}
+
+.landing-button:hover {
+  background: var(--color-primary-hover);
+}
+
+.landing-button:active {
+  transform: translateY(1px);
+}
+
+.landing-target {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.landing-target code {
+  color: var(--color-text-secondary);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.landing-countdown {
+  margin: 0 0 16px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+.landing-status {
+  margin-top: 20px;
+  color: var(--color-text-tertiary);
+  font-size: 13px;
 }
 
 .landing-footer {
-  margin-top: 16px;
-  color: #73858c;
-  font-size: 14px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+.landing-custom {
+  text-align: left;
+}
+
+.landing-public {
+  width: min(92vw, 480px);
+}
+
+@media (max-width: 480px) {
+  .landing-page {
+    padding: 28px 22px;
+  }
+  .landing-page h1 {
+    font-size: 20px;
+  }
 }

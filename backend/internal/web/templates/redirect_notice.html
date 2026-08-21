@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/assets/landing/gravitylink-landing.css">
+  <style>:root{--color-primary:{{.ThemeColor}}}</style>
+</head>
+<body>
+  <main class="landing-page">
+    <h1>{{.Title}}</h1>
+    <p>{{.Message}}</p>
+    {{if .ShowTargetURL}}<p class="landing-target"><code>{{.TargetURL}}</code></p>{{end}}
+    {{if .Countdown}}
+    <p class="landing-countdown" data-countdown="{{.Countdown}}" data-target="{{.TargetURL}}"></p>
+    {{end}}
+    <a class="landing-button" href="{{.TargetURL}}">{{.ButtonText}}</a>
+  </main>
+  <script src="/assets/landing/gravitylink-landing.js"></script>
+</body>
+</html>
