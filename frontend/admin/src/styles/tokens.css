@@ -1,0 +1,77 @@
+/**
+ * GravityLink 设计令牌
+ * 详见 Docs/ui-design-system.md
+ */
+
+:root {
+  /* 品牌色 */
+  --color-primary: #0f766e;
+  --color-primary-hover: #0d655e;
+  --color-primary-pressed: #0b544e;
+  --color-primary-soft: #d3ece8;
+  --color-accent: #14b8a6;
+
+  /* 中性色 */
+  --color-bg-page: #f5f7f8;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #fafbfc;
+  --color-bg-sidebar: #0f1c22;
+  --color-bg-sidebar-active: #1d2f38;
+  --color-border: #dbe3e6;
+  --color-border-strong: #c2cdd2;
+  --color-text-primary: #17222a;
+  --color-text-secondary: #48565e;
+  --color-text-tertiary: #7a8990;
+  --color-text-inverse: #f7fafb;
+
+  /* 功能色 */
+  --color-success: #0e7a5f;
+  --color-success-bg: #d9f2e8;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fdeec8;
+  --color-error: #b3261e;
+  --color-error-bg: #fbe3e1;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbe7fd;
+
+  /* 字号 */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+  --font-size-3xl: 28px;
+
+  /* 间距（4px 基线） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(15, 28, 34, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 28, 34, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 28, 34, 0.12);
+
+  /* 布局 */
+  --layout-sidebar-width: 232px;
+  --layout-sidebar-collapsed: 64px;
+  --layout-content-max: 1440px;
+
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  font-family: Inter, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-synthesis: none;
+}
