@@ -483,10 +483,35 @@ func (m *Manager) completeSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := m.configFromInput(input)
 	if err := m.activate(cfg, true); err != nil {
-		writeError(w, http.StatusBadRequest, 4003, err.Error())
+		m.logger.Error("setup activation failed", "error", err)
+		writeError(w, http.StatusBadRequest, 4003, friendlySetupError(err))
 		return
 	}
 	writeOK(w, map[string]any{"initialized": true, "auth_disabled": cfg.AuthDisabled})
+}
+
+// friendlySetupError 将 activate 阶段的底层错误映射为用户可理解的中文提示，
+// 原始错误已记录到服务端日志，不再直接透出 SQL 细节。
+func friendlySetupError(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "connect mysql"):
+		return "无法连接 MySQL，请返回数据服务步骤检查连接配置"
+	case strings.Contains(msg, "initialize schema"), strings.Contains(msg, "数据库表结构"):
+		return "数据库结构初始化失败：" + msg
+	case strings.Contains(msg, "create super administrator"):
+		return "创建超级管理员失败，请返回管理员身份步骤重新填写后重试"
+	case strings.Contains(msg, "administrator initialization"):
+		return "管理员身份未完成验证，请返回管理员身份步骤"
+	case strings.Contains(msg, "connect redis"):
+		return "无法连接 Redis，请返回数据服务步骤检查连接配置"
+	case strings.Contains(msg, "save config"):
+		return "保存配置文件失败，请检查服务端 /data 目录权限后重试"
+	case strings.Contains(msg, "生产环境"), strings.Contains(msg, "请先完成"), strings.Contains(msg, "配置不完整"), strings.Contains(msg, "重新初始化"):
+		return msg
+	default:
+		return "初始化失败，请检查各项配置后重试（详细信息请查看服务端日志）"
+	}
 }
 
 func (m *Manager) configFromInput(input setupRequest) config.Config {

@@ -16,13 +16,14 @@ import {
 const props = defineProps<{ status: SetupStatus }>();
 const emit = defineEmits<{ completed: [] }>();
 
-const step = ref(props.status.auth.verified ? 2 : 1);
+const step = ref(1);
 const busy = ref(false);
 const error = ref('');
 const success = ref('');
 const copied = ref('');
 const authVerified = ref(props.status.auth.verified);
 const ownerName = ref(props.status.auth.owner_username);
+const dbTested = ref(false);
 
 const form = reactive({
   authMode: (props.status.auth.mode || 'logto') as 'logto' | 'local',
@@ -34,7 +35,6 @@ const form = reactive({
   adminBaseURL: props.status.auth.admin_base_url || window.location.origin,
   allowedRoles: props.status.auth.allowed_roles?.join(', ') || 'admin',
   username: props.status.auth.owner_username,
-  email: props.status.auth.owner_email,
   password: '',
   passwordConfirm: '',
   mysqlHost: props.status.database.host || 'mysql',
@@ -80,7 +80,7 @@ onMounted(async () => {
     const result = await claimSetupLogto();
     authVerified.value = result.verified;
     ownerName.value = result.username;
-    step.value = 2;
+    step.value = 3;
     success.value = `已验证管理员身份：${result.username}`;
   } catch (err) {
     error.value = messageOf(err);
@@ -118,7 +118,6 @@ function payload(): SetupPayload {
       admin_base_url: form.adminBaseURL.trim(),
       allowed_roles: form.allowedRoles.split(',').map((role) => role.trim()).filter(Boolean),
       username: form.username.trim(),
-      email: form.email.trim(),
       password: form.password,
     },
   };
@@ -152,7 +151,7 @@ async function verifyLocal() {
     authVerified.value = result.verified;
     ownerName.value = result.username;
     success.value = `本地超级管理员 ${result.username} 已就绪`;
-    step.value = 2;
+    step.value = 3;
   } catch (err) {
     error.value = messageOf(err);
   } finally {
@@ -166,6 +165,7 @@ async function testConnections() {
   success.value = '';
   try {
     const result = await testSetupDatabase(payload());
+    dbTested.value = true;
     success.value = result.schema_ready
       ? 'MySQL 与 Redis 连接正常，现有数据库结构可用'
       : '连接正常，完成初始化时将自动创建数据库结构';
@@ -190,10 +190,27 @@ async function finish() {
 }
 
 function chooseMode(mode: 'logto' | 'local') {
+  if (mode === form.authMode) return;
+  if (authVerified.value && !window.confirm('切换认证方式将清除已验证的管理员身份，需要重新验证。确定切换吗？')) {
+    return;
+  }
   form.authMode = mode;
   authVerified.value = false;
   error.value = '';
   success.value = '';
+}
+
+// 从确认页返回修改某一步时，清除对应步骤的已完成标记
+function editDatabase() {
+  dbTested.value = false;
+  success.value = '';
+  step.value = 1;
+}
+
+function editAuth() {
+  authVerified.value = false;
+  success.value = '';
+  step.value = 2;
 }
 
 function useCurrentOrigin() {
@@ -231,12 +248,12 @@ function messageOf(err: unknown): string {
       </div>
       <ol class="setup-steps">
         <li :class="{ active: step === 1, done: step > 1 }">
-          <span><ShieldCheck :size="16" /></span>
-          <div><strong>管理员身份</strong><small>Logto 或本地账号</small></div>
-        </li>
-        <li :class="{ active: step === 2, done: step > 2 }">
           <span><Database :size="16" /></span>
           <div><strong>数据服务</strong><small>MySQL 与 Redis</small></div>
+        </li>
+        <li :class="{ active: step === 2, done: step > 2 }">
+          <span><ShieldCheck :size="16" /></span>
+          <div><strong>管理员身份</strong><small>Logto 或本地账号</small></div>
         </li>
         <li :class="{ active: step === 3 }">
           <span><Check :size="16" /></span>
@@ -250,9 +267,9 @@ function messageOf(err: unknown): string {
       <header class="setup-header">
         <div>
           <p class="eyebrow">首次配置</p>
-          <h1>{{ step === 1 ? '建立管理员身份' : step === 2 ? '连接数据服务' : '确认并启用' }}</h1>
+          <h1>{{ step === 1 ? '连接数据服务' : step === 2 ? '建立管理员身份' : '确认并启用' }}</h1>
           <p class="page-description">
-            {{ step === 1 ? '首位完成验证的账号将成为超级管理员。' : step === 2 ? '凭据只保存在服务器持久化配置中。' : '检查配置摘要，完成后立即进入管理端。' }}
+            {{ step === 1 ? 'GravityLink 依赖 MySQL 与 Redis，先确认它们可以连通。' : step === 2 ? '首位完成验证的账号将成为超级管理员。' : '检查配置摘要，完成后立即进入管理端。' }}
           </p>
         </div>
         <span class="setup-progress">步骤 {{ step }} / 3</span>
@@ -263,6 +280,32 @@ function messageOf(err: unknown): string {
       </div>
 
       <div v-if="step === 1" class="setup-form">
+        <section class="setup-section">
+          <div class="setup-section-head"><h2>MySQL</h2><p>保存短链、域名、落地页、用户与统计数据。</p></div>
+          <div class="form-grid">
+            <label class="span-2">Host<input v-model="form.mysqlHost" /></label>
+            <label>Port<input v-model="form.mysqlPort" inputmode="numeric" /></label>
+            <label>Database<input v-model="form.mysqlDatabase" /></label>
+            <label>User<input v-model="form.mysqlUser" autocomplete="username" /></label>
+            <label>Password<input v-model="form.mysqlPassword" type="password" autocomplete="new-password" /></label>
+            <label class="span-4">连接参数<input v-model="form.mysqlParams" /></label>
+            <details class="advanced span-4"><summary>使用完整 DSN</summary><label>MYSQL_DSN<input v-model="form.mysqlDSN" /></label></details>
+          </div>
+        </section>
+        <section class="setup-section">
+          <div class="setup-section-head"><h2>Redis</h2><p>用于访问缓存、计数和异步队列。</p></div>
+          <div class="form-grid">
+            <label class="span-2">Host<input v-model="form.redisHost" /></label>
+            <label>Port<input v-model="form.redisPort" inputmode="numeric" /></label>
+            <label>DB<input v-model.number="form.redisDB" min="0" type="number" /></label>
+            <label class="span-2">Password<input v-model="form.redisPassword" type="password" autocomplete="new-password" /></label>
+            <label class="span-2">完整地址（可选）<input v-model="form.redisAddr" placeholder="redis:6379" /></label>
+          </div>
+        </section>
+        <p class="field-hint">建议先点击「测试连接」确认可达，再进入下一步。</p>
+      </div>
+
+      <div v-else-if="step === 2" class="setup-form">
         <div class="segmented auth-selector">
           <button :class="{ active: form.authMode === 'logto' }" type="button" @click="chooseMode('logto')">
             <ShieldCheck :size="17" /> Logto
@@ -359,7 +402,6 @@ function messageOf(err: unknown): string {
           <div class="setup-section-head"><h2>本地超级管理员</h2><p>适合内网或不接入统一身份平台的部署。</p></div>
           <div class="form-grid">
             <label class="span-2">用户名<input v-model="form.username" autocomplete="username" placeholder="admin" /></label>
-            <label class="span-2">邮箱（可选）<input v-model="form.email" autocomplete="email" /></label>
             <label class="span-2">密码<input v-model="form.password" type="password" autocomplete="new-password" /></label>
             <label class="span-2">确认密码<input v-model="form.passwordConfirm" type="password" autocomplete="new-password" /></label>
           </div>
@@ -370,35 +412,10 @@ function messageOf(err: unknown): string {
         </section>
       </div>
 
-      <div v-else-if="step === 2" class="setup-form">
-        <section class="setup-section">
-          <div class="setup-section-head"><h2>MySQL</h2><p>保存短链、域名、落地页、用户与统计数据。</p></div>
-          <div class="form-grid">
-            <label class="span-2">Host<input v-model="form.mysqlHost" /></label>
-            <label>Port<input v-model="form.mysqlPort" inputmode="numeric" /></label>
-            <label>Database<input v-model="form.mysqlDatabase" /></label>
-            <label>User<input v-model="form.mysqlUser" autocomplete="username" /></label>
-            <label>Password<input v-model="form.mysqlPassword" type="password" autocomplete="new-password" /></label>
-            <label class="span-4">连接参数<input v-model="form.mysqlParams" /></label>
-            <details class="advanced span-4"><summary>使用完整 DSN</summary><label>MYSQL_DSN<input v-model="form.mysqlDSN" /></label></details>
-          </div>
-        </section>
-        <section class="setup-section">
-          <div class="setup-section-head"><h2>Redis</h2><p>用于访问缓存、计数和异步队列。</p></div>
-          <div class="form-grid">
-            <label class="span-2">Host<input v-model="form.redisHost" /></label>
-            <label>Port<input v-model="form.redisPort" inputmode="numeric" /></label>
-            <label>DB<input v-model.number="form.redisDB" min="0" type="number" /></label>
-            <label class="span-2">Password<input v-model="form.redisPassword" type="password" autocomplete="new-password" /></label>
-            <label class="span-2">完整地址（可选）<input v-model="form.redisAddr" placeholder="redis:6379" /></label>
-          </div>
-        </section>
-      </div>
-
       <div v-else class="setup-review">
-        <section><span>超级管理员</span><strong>{{ ownerName }} · {{ form.authMode === 'logto' ? 'Logto' : '本地账号' }}</strong><button type="button" @click="step = 1">修改</button></section>
-        <section><span>MySQL</span><strong>{{ form.mysqlHost }}:{{ form.mysqlPort }} / {{ form.mysqlDatabase }}</strong><button type="button" @click="step = 2">修改</button></section>
-        <section><span>Redis</span><strong>{{ form.redisAddr || `${form.redisHost}:${form.redisPort}` }} / DB {{ form.redisDB }}</strong><button type="button" @click="step = 2">修改</button></section>
+        <section><span>MySQL</span><strong>{{ form.mysqlHost }}:{{ form.mysqlPort }} / {{ form.mysqlDatabase }}</strong><button type="button" @click="editDatabase">修改</button></section>
+        <section><span>Redis</span><strong>{{ form.redisAddr || `${form.redisHost}:${form.redisPort}` }} / DB {{ form.redisDB }}</strong><button type="button" @click="editDatabase">修改</button></section>
+        <section><span>超级管理员</span><strong>{{ ownerName }} · {{ form.authMode === 'logto' ? 'Logto' : '本地账号' }}</strong><button type="button" @click="editAuth">修改</button></section>
         <div class="setup-final-note">完成后会自动创建或升级数据库结构，并锁定初始化接口。业务数据不会因重新配置而被清空。</div>
       </div>
 
@@ -409,8 +426,11 @@ function messageOf(err: unknown): string {
         <button v-if="step > 1" class="ghost icon-text" type="button" :disabled="busy" @click="step -= 1"><ChevronLeft :size="16" />上一步</button>
         <span v-else></span>
         <div>
-          <button v-if="step === 2" class="ghost" type="button" :disabled="busy || !databaseReady" @click="testConnections">{{ busy ? '正在测试...' : '测试连接' }}</button>
-          <button v-if="step === 2" class="primary icon-text" type="button" :disabled="busy || !databaseReady" @click="step = 3">继续<ChevronRight :size="16" /></button>
+          <button v-if="step === 1" class="ghost" type="button" :disabled="busy || !databaseReady" @click="testConnections">{{ busy ? '正在测试...' : dbTested ? '重新测试连接' : '测试连接' }}</button>
+          <button v-if="step === 1" class="primary icon-text" type="button" :disabled="busy || !databaseReady" @click="step = 2">继续<ChevronRight :size="16" /></button>
+          <button v-if="step === 2" class="primary icon-text" type="button" :disabled="busy || !authVerified" @click="step = 3">
+            {{ authVerified ? '继续' : '请先完成管理员验证' }}<ChevronRight :size="16" />
+          </button>
           <button v-if="step === 3" class="primary icon-text" type="button" :disabled="busy || !authVerified" @click="finish">
             <LoaderCircle v-if="busy" class="spin" :size="16" /><Check v-else :size="16" />{{ busy ? '正在启用...' : '完成初始化' }}
           </button>
