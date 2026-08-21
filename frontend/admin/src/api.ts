@@ -27,6 +27,7 @@ export interface CreateLinkPayload {
   entry_domain_id: number;
   target_url: string;
   title?: string;
+  expire_at?: string | null;
   channel?: {
     utm_source?: string;
     utm_medium?: string;
@@ -45,6 +46,13 @@ export interface CreateLinkPayload {
       scan_limit?: number;
     }>;
   };
+}
+
+export interface UpdateLinkPayload {
+  target_url?: string;
+  title?: string;
+  expire_at?: string | null;
+  status?: 'active' | 'disabled';
 }
 
 export interface DomainItem {
@@ -135,11 +143,26 @@ export async function listLinks(): Promise<LinkListData> {
   return request<LinkListData>('/api/v1/links');
 }
 
+export async function getLink(id: number): Promise<LinkItem> {
+  return request<LinkItem>(`/api/v1/links/${id}`);
+}
+
 export async function createLink(payload: CreateLinkPayload): Promise<LinkItem> {
   return request<LinkItem>('/api/v1/links', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function updateLink(id: number, payload: UpdateLinkPayload): Promise<LinkItem> {
+  return request<LinkItem>(`/api/v1/links/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteLink(id: number): Promise<void> {
+  await request<{ deleted: boolean }>(`/api/v1/links/${id}`, { method: 'DELETE' });
 }
 
 export async function listDomains(): Promise<DomainListData> {
