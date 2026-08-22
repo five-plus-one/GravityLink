@@ -59,5 +59,5 @@ GravityLink/
 cd backend && go build ./... && go test ./...
 
 # 前端
-cd frontend && npm run type-check && npm run build
+cd frontend/admin && npm run type-check && npm run build
 ```
