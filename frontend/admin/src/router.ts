@@ -63,7 +63,9 @@ router.beforeEach(async (to) => {
     try {
       await setup.refresh();
     } catch {
-      return true;
+      // setup API 不可用（如本地 dev 只代理业务端口）：视为已初始化，
+      // 继续走登录检查，而不是直接放行导致用户态未加载。
+      setup.loaded = true;
     }
   }
 

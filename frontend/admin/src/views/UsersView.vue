@@ -147,7 +147,7 @@ async function setStatus(item: UserItem, status: 'active' | 'disabled') {
 </script>
 
 <template>
-  <div class="users-page">
+  <div class="page-view">
     <NAlert type="info" :show-icon="true">
       <template #icon><ShieldCheck :size="16" /></template>
       <strong>后端强制执行权限</strong> · 超级管理员可授权管理员、停用账号；界面选择不会覆盖后端角色。
@@ -179,7 +179,7 @@ async function setStatus(item: UserItem, status: 'active' | 'disabled') {
 </template>
 
 <style scoped>
-.users-page {
+.page-view {
   display: grid;
   gap: var(--space-4);
 }

@@ -40,6 +40,7 @@ const menuOptions: MenuOption[] = nav.map((item) => ({
 
 const activeKey = computed(() => (route.name as string) || 'dashboard');
 const pageTitle = computed(() => (route.meta.title as string) || '');
+const publicEntryUrl = computed(() => window.location.origin);
 
 const roleLabel = computed(() => {
   const role = auth.user?.role;
@@ -100,7 +101,7 @@ function handleMenuSelect(key: string) {
       />
 
       <div class="sider-footer">
-        <NButton v-if="!collapsed" text tag="a" href="/" target="_blank" class="public-link">
+        <NButton v-if="!collapsed" text tag="a" :href="publicEntryUrl" target="_blank" class="public-link">
           <template #icon><ExternalLink :size="14" /></template>
           访问公开入口
         </NButton>

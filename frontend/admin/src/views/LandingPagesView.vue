@@ -170,7 +170,8 @@ function messageOf(err: unknown): string {
 </script>
 
 <template>
-  <NCard>
+  <div class="page-view">
+    <NCard>
     <template #header>
       <div class="card-head">
         <div>
@@ -238,9 +239,16 @@ function messageOf(err: unknown): string {
       </div>
     </template>
   </NModal>
+  </div>
 </template>
 
 <style scoped>
+.page-view {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
 .card-head {
   display: flex;
   align-items: center;
