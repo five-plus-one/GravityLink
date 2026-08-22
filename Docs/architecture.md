@@ -198,8 +198,8 @@ stat_flush（goroutine，每小时整点）：
 │  gravitylink   (Go 二进制 + 前端)   │
 │  mysql         (MySQL 8)            │
 │  redis         (Redis 7)            │
-│  nginx         (TLS 终止 + 反代)    │
 │                                     │
+│  反向代理/TLS   (用户自备，可选)     │
 │  Logto         (用户自行维护)        │
 └─────────────────────────────────────┘
 ```

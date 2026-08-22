@@ -23,9 +23,7 @@ English overview is included below.
 
 ## 快速启动
 
-开发环境默认开启 `AUTH_DISABLED=true`，方便本地调试。
-
-基础版会启动 MySQL、Redis 和一个 GravityLink 应用容器。应用容器内部监听两个端口：
+统一使用容器化部署。基础版会启动 MySQL、Redis 和一个 GravityLink 应用容器。应用容器内部监听两个端口：
 
 - `8080`：后端 API / 公网短链入口 / 落地页
 - `8081`：管理端前端，且 `/api/*` 会转给同一个后端 handler
@@ -44,76 +42,25 @@ docker compose -f deploy/docker-compose.yml up --build
 如果本机 `3306`、`6379`、`8080` 或 `8081` 已被占用，可以只换宿主机映射端口：
 
 ```powershell
-$env:MYSQL_HOST_PORT="13306"
-$env:REDIS_HOST_PORT="16379"
-$env:APP_HOST_PORT="18080"
-$env:ADMIN_HOST_PORT="18081"
+$env:MYSQL_PORT="13306"
+$env:REDIS_PORT="16379"
+$env:APP_PORT="18080"
+$env:ADMIN_PORT="18081"
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-本地开发也可以单独跑 Vite 管理端：
-
-```bash
-cd frontend/admin
-npm install
-npm run dev
-```
-
-如果后端 API 不是 `8080`，启动前端时指定代理目标：
-
-```powershell
-$env:VITE_API_PROXY_TARGET="http://127.0.0.1:18080"
-npm run dev -- --host 127.0.0.1 --port 5173
-```
-
-打开：
-
-- 管理端：`http://127.0.0.1:5173`
-- 健康检查：`http://127.0.0.1:18080/api/v1/health`
-
 ## 数据库与缓存配置
 
-推荐使用拆分环境变量，应用会自动拼接 MySQL DSN：
+MySQL / Redis 连接信息与 Logto 认证配置**不需要提前准备**：首次访问管理端端口（`http://127.0.0.1:8081`）会自动进入初始化向导，在向导中填写连接信息和认证方式即可。compose 已通过 `SETUP_DEFAULT_MYSQL_HOST=mysql`、`SETUP_DEFAULT_REDIS_HOST=redis` 预填了默认主机。
 
-```env
-MYSQL_HOST=mysql
-MYSQL_PORT=3306
-MYSQL_DATABASE=gravitylink
-MYSQL_USER=gravitylink
-MYSQL_PASSWORD=change-me
-MYSQL_PARAMS=charset=utf8mb4&parseTime=True&loc=Local
-```
-
-如果你使用云数据库、特殊参数或密码里包含特殊字符，可以直接提供完整 DSN 覆盖：
-
-```env
-MYSQL_DSN=gravitylink:change-me@tcp(mysql:3306)/gravitylink?charset=utf8mb4&parseTime=True&loc=Local
-```
-
-Redis 推荐拆分配置：
-
-```env
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
-```
-
-也可以用 `REDIS_ADDR=redis:6379` 直接覆盖地址。`MYSQL_HOST_PORT` / `REDIS_HOST_PORT` 只控制 Docker 映射到宿主机的端口，不影响容器内应用连接数据库。
+使用官方 compose 时 MySQL 表结构由 `deploy/mysql/init/001_schema.sql` 自动导入；连接外部 MySQL 时，请先手动导入该文件。
 
 ## Logto 登录配置
 
-管理端使用 Logto OIDC Authorization Code + PKCE 登录。生产环境至少配置：
+管理端支持两种认证方式，均在首次初始化向导中选择：
 
-```env
-AUTH_DISABLED=false
-AUTH_MODE=logto
-LOGTO_ISSUER=https://logto.example.com/oidc
-LOGTO_APP_ID=your-spa-app-id
-LOGTO_AUDIENCE=https://gravitylink.example.com/api
-ADMIN_BASE_URL=https://admin.example.com
-ADMIN_ALLOWED_ROLES=admin
-```
+- **Logto OIDC**：Authorization Code + PKCE 登录。
+- **本地账号**：创建仅保存 bcrypt 哈希的超级管理员。
 
 Logto SPA 应用需要把回调地址加入允许列表：
 
@@ -124,22 +71,18 @@ http://127.0.0.1:8081/auth/callback
 http://127.0.0.1:8081/setup/auth/callback
 ```
 
-开发环境可以保留 `AUTH_DISABLED=true`，管理端会进入开发模式；生产环境不应开启。
-
 ### 首次初始化
 
 管理端会先检查安装状态。尚未完成管理员认领、数据库或 Redis 配置缺失、依赖连接失败时，访问管理端端口会自动进入首次初始化向导；无需先编辑容器内文件，也不会显示无效的登录按钮。
 
-向导先选择 Logto 或本地账号。Logto 模式会检查 OIDC Discovery 并要求完成一次真实登录；本地模式会创建仅保存 bcrypt 哈希的超级管理员。身份验证完成后再测试 MySQL/Redis，并在空库中自动创建表结构。最终配置写入 `CONFIG_FILE`（容器默认 `/data/gravitylink.json`），官方 compose 已为 `/data` 挂载独立的 `gravitylink_config` volume。业务路由会在当前进程内启用，不需要重启容器。初始化完成后匿名 setup 写接口自动锁定。
-
-使用官方 compose 时 MySQL 表结构由 `deploy/mysql/init/001_schema.sql` 自动导入；连接外部 MySQL 时，请先导入该文件。
+向导先选择 Logto 或本地账号。Logto 模式会检查 OIDC Discovery 并要求完成一次真实登录；本地模式会创建仅保存 bcrypt 哈希的超级管理员。身份验证完成后再测试 MySQL/Redis，并在空库中自动创建表结构。最终配置写入 `CONFIG_FILE`（容器默认 `/data/gravitylink.json`），官方 compose 已为 `/data` 挂载独立的 `gravitylink_data` volume。业务路由会在当前进程内启用，不需要重启容器。初始化完成后匿名 setup 写接口自动锁定。
 
 ### 访问短链接
 
 管理端只是后台，不应对公网用户开放。公网用户访问的是后端承接的入口/落地域名：
 
 - 生产环境：将 `go.example.com`、`page.example.com` 等域名解析到 Nginx，再在管理端把它们分别配置为 `entry` / `landing`。用户访问 `https://go.example.com/{code}`，后端会直接 `302` 到目标 URL，或跳到 `https://page.example.com/{code}` 渲染落地页。
-- 本地开发：可以用 `curl -H "Host: go.demo.localhost" http://127.0.0.1:18080/demo` 验证 Host 路由；开发模式也允许直接访问 `http://127.0.0.1:18080/{code}` 作为入口域名兜底。
+- 本地验证 Host 路由：`curl -H "Host: go.demo.localhost" http://127.0.0.1:18080/demo`（需先在管理端注册该入口域名）。
 
 落地页的公开样式和脚本由 Go 二进制内嵌并托管在 `/assets/landing/*`，不需要把管理端 Vue 应用暴露给用户。
 
@@ -164,35 +107,25 @@ npm run build
 
 ```bash
 docker compose -f deploy/docker-compose.yml config
-docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env config
 ```
 
 ## 生产部署
 
-复制环境变量模板：
+唯一部署方式即上面的 compose 文件，生产环境只需两步调整：
+
+1. 复制并修改环境变量模板（至少改掉 MySQL 密码）：
 
 ```bash
 cp deploy/.env.example deploy/.env
 ```
 
-修改 `deploy/.env` 中的域名、数据库密码和 Logto 配置，并把 TLS 证书放到：
-
-```text
-deploy/nginx/certs/fullchain.pem
-deploy/nginx/certs/privkey.pem
-```
-
-启动完整栈：
-
-```bash
-docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env up --build -d
-```
-
-如果不需要 Nginx，只想用一个应用容器映射两个端口，使用基础 compose 并在 `deploy/.env` 中配置端口：
+2. 以守护模式启动：
 
 ```bash
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up --build -d
 ```
+
+TLS 终止与域名路由由你自己的反向代理（Nginx / Caddy 等）负责：将入口/落地域名的 HTTPS 流量反代到 `APP_PORT`，管理域名的流量反代到 `ADMIN_PORT`。
 
 ## 旧版迁移
 
@@ -245,15 +178,10 @@ npm run build
 
 ```bash
 cp deploy/.env.example deploy/.env
-docker compose -f deploy/docker-compose.full.yml --env-file deploy/.env up --build -d
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up --build -d
 ```
 
-Put TLS certificates at:
-
-```text
-deploy/nginx/certs/fullchain.pem
-deploy/nginx/certs/privkey.pem
-```
+TLS termination and domain routing are handled by your own reverse proxy (Nginx, Caddy, etc.): forward entry/landing domain HTTPS traffic to `APP_PORT` and admin traffic to `ADMIN_PORT`.
 
 ### Migration
 

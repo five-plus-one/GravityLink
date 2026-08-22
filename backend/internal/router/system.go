@@ -31,9 +31,7 @@ func registerSystemRoutes(group *gin.RouterGroup, deps Dependencies) {
 			return
 		}
 		authService := service.NewAuthService(deps.DB)
-		if deps.Config.AuthDisabled {
-			// Development bypass is already prohibited in production.
-		} else if user.AuthSource == model.AuthSourceLocal {
+		if user.AuthSource == model.AuthSourceLocal {
 			if err := authService.VerifyLocalPassword(user.ID, input.Password); err != nil {
 				response.Error(c, http.StatusUnauthorized, 4401, "password verification failed")
 				return

@@ -15,7 +15,6 @@ import (
 )
 
 type authConfigPayload struct {
-	AuthDisabled          bool     `json:"auth_disabled"`
 	Issuer                string   `json:"issuer"`
 	ClientID              string   `json:"client_id"`
 	Audience              string   `json:"audience"`
@@ -103,7 +102,6 @@ func authConfig(cfg config.Config, req *http.Request) authConfigPayload {
 	}
 
 	return authConfigPayload{
-		AuthDisabled:          cfg.AuthDisabled,
 		Issuer:                issuer,
 		ClientID:              cfg.LogtoAppID,
 		Audience:              cfg.LogtoAudience,

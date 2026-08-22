@@ -30,7 +30,6 @@ type Config struct {
 	RedisAddr            string
 	RedisPassword        string
 	RedisDB              int
-	AuthDisabled         bool
 	AuthMode             string
 	LogtoIssuer          string
 	LogtoAppID           string
@@ -62,7 +61,6 @@ type FileConfig struct {
 	RedisAddr            string   `json:"redis_addr,omitempty"`
 	RedisPassword        string   `json:"redis_password,omitempty"`
 	RedisDB              int      `json:"redis_db"`
-	AuthDisabled         bool     `json:"auth_disabled"`
 	AuthMode             string   `json:"auth_mode"`
 	LogtoIssuer          string   `json:"logto_issuer,omitempty"`
 	LogtoAppID           string   `json:"logto_app_id,omitempty"`
@@ -82,7 +80,7 @@ type FileConfig struct {
 
 func Load() Config {
 	cfg := Config{
-		AppEnv:            "development",
+		AppEnv:            "production",
 		HTTPAddr:          ":8080",
 		AdminHTTPAddr:     ":8081",
 		LogLevel:          slog.LevelInfo,
@@ -192,7 +190,7 @@ func (c Config) MissingRuntimeConfig() []string {
 	if c.RedisAddr == "" {
 		missing = append(missing, "redis")
 	}
-	if !c.AuthDisabled && c.AuthMode != "local" {
+	if c.AuthMode != "local" {
 		if c.LogtoIssuer == "" {
 			missing = append(missing, "logto_issuer")
 		}
@@ -215,6 +213,9 @@ func (c *Config) RebuildConnections() {
 
 func (c *Config) rebuildConnections() {
 	if c.MySQLDSN == "" && c.MySQLHost != "" && c.MySQLPort != "" && c.MySQLDatabase != "" && c.MySQLUser != "" {
+		if c.MySQLParams == "" {
+			c.MySQLParams = "charset=utf8mb4&parseTime=True&loc=Local"
+		}
 		c.MySQLDSN = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?%s", c.MySQLUser, c.MySQLPassword, c.MySQLHost, c.MySQLPort, c.MySQLDatabase, c.MySQLParams)
 	}
 	if c.RedisAddr == "" && c.RedisHost != "" && c.RedisPort != "" {
@@ -246,7 +247,6 @@ func applyFile(cfg *Config, file FileConfig) {
 	cfg.RedisAddr = file.RedisAddr
 	cfg.RedisPassword = file.RedisPassword
 	cfg.RedisDB = file.RedisDB
-	cfg.AuthDisabled = file.AuthDisabled
 	cfg.AuthMode = first(file.AuthMode, cfg.AuthMode)
 	cfg.LogtoIssuer = file.LogtoIssuer
 	cfg.LogtoAppID = file.LogtoAppID
@@ -303,7 +303,6 @@ func applyEnvironment(cfg *Config) {
 	}
 	cfg.LogLevel = envLogLevel("LOG_LEVEL", cfg.LogLevel)
 	cfg.RedisDB = envInt("REDIS_DB", cfg.RedisDB)
-	cfg.AuthDisabled = envBool("AUTH_DISABLED", cfg.AuthDisabled)
 	cfg.AdminAllowedRoles = envList("ADMIN_ALLOWED_ROLES", cfg.AdminAllowedRoles)
 }
 
@@ -322,7 +321,7 @@ func fileFromConfig(cfg Config) FileConfig {
 		MySQLDatabase: cfg.MySQLDatabase, MySQLUser: cfg.MySQLUser, MySQLPassword: cfg.MySQLPassword,
 		MySQLParams: cfg.MySQLParams, MySQLDSN: cfg.MySQLDSN, RedisHost: cfg.RedisHost,
 		RedisPort: cfg.RedisPort, RedisAddr: cfg.RedisAddr, RedisPassword: cfg.RedisPassword,
-		RedisDB: cfg.RedisDB, AuthDisabled: cfg.AuthDisabled, LogtoIssuer: cfg.LogtoIssuer,
+		RedisDB: cfg.RedisDB, LogtoIssuer: cfg.LogtoIssuer,
 		LogtoAppID: cfg.LogtoAppID, LogtoAudience: cfg.LogtoAudience, LogtoJWKSURL: cfg.LogtoJWKSURL,
 		LogtoScopes: cfg.LogtoScopes, AdminBaseURL: cfg.AdminBaseURL, AdminAllowedRoles: cfg.AdminAllowedRoles,
 		AuthMode: cfg.AuthMode, BootstrapVerified: cfg.BootstrapVerified, BootstrapSubject: cfg.BootstrapSubject,

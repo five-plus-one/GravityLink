@@ -46,12 +46,6 @@ func AuthRequired(cfg config.Config, logger *slog.Logger, databases ...*gorm.DB)
 	}
 
 	return func(c *gin.Context) {
-		if cfg.AuthDisabled {
-			c.Set(ContextUserKey, AuthUser{Subject: "dev", Username: "dev", Role: model.UserRoleSuperAdmin, Status: model.StatusActive, AuthSource: "development"})
-			c.Next()
-			return
-		}
-
 		if db != nil {
 			if sessionToken, err := c.Cookie(LocalSessionCookie); err == nil && sessionToken != "" {
 				user, err := service.NewAuthService(db).ResolveSession(sessionToken)

@@ -1,27 +1,29 @@
 services:
   mysql:
     image: mysql:8.0
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-gravitylink_root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-gravitylink}
-      MYSQL_USER: ${MYSQL_USER:-gravitylink}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gravitylink}
+      MYSQL_DATABASE: gravitylink
+      MYSQL_USER: gravitylink
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请设置 MYSQL_PASSWORD}
     ports:
-      - "${MYSQL_HOST_PORT:-3306}:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ugravitylink -p$${MYSQL_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -34,39 +36,19 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     environment:
-      APP_ENV: ${APP_ENV:-development}
-      HTTP_ADDR: ${HTTP_ADDR:-:8080}
-      ADMIN_HTTP_ADDR: ${ADMIN_HTTP_ADDR:-:8081}
-      CONFIG_FILE: ${CONFIG_FILE:-/data/gravitylink.json}
+      APP_ENV: production
+      HTTP_ADDR: :8080
+      ADMIN_HTTP_ADDR: :8081
+      CONFIG_FILE: /data/gravitylink.json
       SETUP_DEFAULT_MYSQL_HOST: mysql
       SETUP_DEFAULT_REDIS_HOST: redis
-      MYSQL_HOST: ${MYSQL_HOST:-}
-      MYSQL_PORT: ${MYSQL_PORT:-}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-}
-      MYSQL_USER: ${MYSQL_USER:-}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
-      MYSQL_PARAMS: ${MYSQL_PARAMS:-}
-      MYSQL_DSN: ${MYSQL_DSN:-}
-      REDIS_HOST: ${REDIS_HOST:-}
-      REDIS_PORT: ${REDIS_PORT:-}
-      REDIS_ADDR: ${REDIS_ADDR:-}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_DB: ${REDIS_DB:-}
-      AUTH_DISABLED: ${AUTH_DISABLED:-}
-      AUTH_MODE: ${AUTH_MODE:-}
-      LOGTO_ISSUER: ${LOGTO_ISSUER:-}
-      LOGTO_APP_ID: ${LOGTO_APP_ID:-}
-      LOGTO_AUDIENCE: ${LOGTO_AUDIENCE:-}
-      LOGTO_JWKS_URL: ${LOGTO_JWKS_URL:-}
-      LOGTO_SCOPES: ${LOGTO_SCOPES:-}
-      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-}
-      ADMIN_ALLOWED_ROLES: ${ADMIN_ALLOWED_ROLES:-}
     ports:
-      - "${APP_HOST_PORT:-8080}:8080"
-      - "${ADMIN_HOST_PORT:-8081}:8081"
+      - "${APP_PORT:-8080}:8080"
+      - "${ADMIN_PORT:-8081}:8081"
     volumes:
-      - gravitylink_config:/data
+      - gravitylink_data:/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -76,4 +58,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
-  gravitylink_config:
+  gravitylink_data:

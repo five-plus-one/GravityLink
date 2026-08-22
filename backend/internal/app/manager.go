@@ -67,7 +67,6 @@ type redisInput struct {
 
 type authInput struct {
 	Mode         string   `json:"mode"`
-	Disabled     bool     `json:"disabled"`
 	Issuer       string   `json:"issuer"`
 	AppID        string   `json:"app_id"`
 	Audience     string   `json:"audience"`
@@ -227,11 +226,9 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 	}
 	authService := service.NewAuthService(db)
 	if persist {
-		if !cfg.AuthDisabled {
-			if _, err := authService.CreateBootstrapOwner(cfg); err != nil {
-				m.reason = "Create super administrator failed: " + err.Error()
-				return fmt.Errorf("create super administrator: %w", err)
-			}
+		if _, err := authService.CreateBootstrapOwner(cfg); err != nil {
+			m.reason = "Create super administrator failed: " + err.Error()
+			return fmt.Errorf("create super administrator: %w", err)
 		}
 		cfg.InstallationComplete = true
 		cfg.BootstrapVerified = false
@@ -239,7 +236,7 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 		cfg.BootstrapUsername = ""
 		cfg.BootstrapEmail = ""
 		cfg.BootstrapPassword = ""
-	} else if !cfg.AuthDisabled {
+	} else {
 		installed, err := authService.Installed()
 		if err != nil || !installed {
 			m.reason = "Administrator initialization is incomplete"
@@ -282,7 +279,7 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 	m.handler.Store(handlerHolder{handler: engine})
 	closeDB = false
 	closeRedis = false
-	m.logger.Info("gravitylink runtime initialized", "auth_disabled", cfg.AuthDisabled)
+	m.logger.Info("gravitylink runtime initialized", "auth_mode", cfg.AuthMode)
 	return nil
 }
 
@@ -302,7 +299,7 @@ func (m *Manager) setupStatus(w http.ResponseWriter, _ *http.Request) {
 			"addr_configured": m.cfg.RedisAddr != "",
 		},
 		"auth": map[string]any{
-			"mode": m.cfg.AuthMode, "disabled": m.cfg.AuthDisabled, "issuer": m.cfg.LogtoIssuer, "app_id": m.cfg.LogtoAppID,
+			"mode": m.cfg.AuthMode, "issuer": m.cfg.LogtoIssuer, "app_id": m.cfg.LogtoAppID,
 			"audience": m.cfg.LogtoAudience, "jwks_url": m.cfg.LogtoJWKSURL, "scopes": m.cfg.LogtoScopes,
 			"admin_base_url": m.cfg.AdminBaseURL, "allowed_roles": m.cfg.AdminAllowedRoles,
 			"verified": m.cfg.BootstrapVerified, "owner_username": m.cfg.BootstrapUsername,
@@ -324,7 +321,6 @@ func (m *Manager) checkLogto(w http.ResponseWriter, r *http.Request) {
 	cfg := m.currentConfig()
 	applyAuthInput(&cfg, input.Auth)
 	cfg.AuthMode = model.AuthSourceLogto
-	cfg.AuthDisabled = false
 	if cfg.LogtoIssuer == "" || cfg.LogtoAppID == "" || cfg.LogtoAudience == "" || cfg.AdminBaseURL == "" {
 		writeError(w, http.StatusBadRequest, 4004, "Logto Issuer、App ID、Audience 和管理端 URL 均为必填项")
 		return
@@ -425,7 +421,6 @@ func (m *Manager) configureLocalOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := m.currentConfig()
 	cfg.AuthMode = model.AuthSourceLocal
-	cfg.AuthDisabled = false
 	cfg.BootstrapVerified = true
 	cfg.BootstrapSubject = ""
 	cfg.BootstrapUsername = username
@@ -487,7 +482,7 @@ func (m *Manager) completeSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, 4003, friendlySetupError(err))
 		return
 	}
-	writeOK(w, map[string]any{"initialized": true, "auth_disabled": cfg.AuthDisabled})
+	writeOK(w, map[string]any{"initialized": true})
 }
 
 // friendlySetupError 将 activate 阶段的底层错误映射为用户可理解的中文提示，
@@ -524,14 +519,17 @@ func (m *Manager) configFromInput(input setupRequest) config.Config {
 	cfg.MySQLDatabase = strings.TrimSpace(input.Database.Database)
 	cfg.MySQLUser = strings.TrimSpace(input.Database.User)
 	cfg.MySQLPassword = input.Database.Password
-	cfg.MySQLParams = strings.TrimSpace(input.Database.Params)
+	// params 为空时保留默认值（charset/parseTime 等），避免拼出无参数的 DSN
+	if params := strings.TrimSpace(input.Database.Params); params != "" {
+		cfg.MySQLParams = params
+	}
 	cfg.MySQLDSN = strings.TrimSpace(input.Database.DSN)
 	cfg.RedisHost = strings.TrimSpace(input.Redis.Host)
 	cfg.RedisPort = strings.TrimSpace(input.Redis.Port)
 	cfg.RedisAddr = strings.TrimSpace(input.Redis.Addr)
 	cfg.RedisPassword = input.Redis.Password
 	cfg.RedisDB = input.Redis.DB
-	if input.Auth.Mode != "" || input.Auth.Issuer != "" || input.Auth.Disabled {
+	if input.Auth.Mode != "" || input.Auth.Issuer != "" {
 		applyAuthInput(&cfg, input.Auth)
 	}
 	cfg.RebuildConnections()
@@ -566,13 +564,10 @@ func (m *Manager) saveDraft(cfg config.Config) error {
 }
 
 func validateConfig(cfg config.Config) error {
-	if cfg.AppEnv == "production" && cfg.AuthDisabled {
-		return fmt.Errorf("生产环境不能关闭身份认证")
-	}
 	if cfg.ResetPending {
 		return fmt.Errorf("系统配置已清除，请重新完成初始化")
 	}
-	if !cfg.AuthDisabled && !cfg.InstallationComplete && !cfg.BootstrapVerified {
+	if !cfg.InstallationComplete && !cfg.BootstrapVerified {
 		return fmt.Errorf("请先完成管理员身份验证")
 	}
 	if missing := cfg.MissingRuntimeConfig(); len(missing) > 0 {
@@ -600,7 +595,6 @@ func applyAuthInput(cfg *config.Config, input authInput) {
 	if input.Mode != "" {
 		cfg.AuthMode = strings.TrimSpace(input.Mode)
 	}
-	cfg.AuthDisabled = input.Disabled
 	cfg.LogtoIssuer = strings.TrimRight(strings.TrimSpace(input.Issuer), "/")
 	cfg.LogtoAppID = strings.TrimSpace(input.AppID)
 	cfg.LogtoAudience = strings.TrimSpace(input.Audience)
