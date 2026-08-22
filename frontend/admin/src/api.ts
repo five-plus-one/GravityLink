@@ -115,7 +115,6 @@ export interface HourlyPoint {
 }
 
 export interface AuthConfigStatus {
-  auth_disabled: boolean;
   issuer: string;
   client_id: string;
   audience: string;

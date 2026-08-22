@@ -147,7 +147,6 @@ function payload(): SetupPayload {
     },
     auth: {
       mode: form.authMode,
-      disabled: false,
       issuer: form.issuer.trim(),
       app_id: form.appID.trim(),
       audience: form.audience.trim(),

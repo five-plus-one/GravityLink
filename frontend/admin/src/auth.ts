@@ -1,6 +1,5 @@
 export interface AuthConfig {
   mode: 'logto' | 'local';
-  auth_disabled: boolean;
   local_enabled: boolean;
   issuer: string;
   client_id: string;

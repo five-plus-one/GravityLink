@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { KeyRound, Link2, LayoutTemplate, LogIn, BarChart3 } from '@lucide/vue';
 import { NAlert, NButton, NForm, NFormItem, NInput } from 'naive-ui';
@@ -13,8 +13,6 @@ const auth = useAuthStore();
 const form = reactive({ username: '', password: '' });
 const submitting = ref(false);
 const error = ref('');
-
-const isDevMode = computed(() => Boolean(auth.config?.auth_disabled));
 
 onMounted(async () => {
   try {
@@ -75,7 +73,7 @@ async function redirectBack() {
         <header>
           <h2>管理员登录</h2>
           <p class="muted">
-            {{ isDevMode ? '当前为开发模式（认证已关闭）。' : auth.config?.mode === 'local' ? '使用初始化时创建的本地账号继续。' : '使用已获授权的 Logto 账号继续。' }}
+            {{ auth.config?.mode === 'local' ? '使用初始化时创建的本地账号继续。' : '使用已获授权的 Logto 账号继续。' }}
           </p>
         </header>
 

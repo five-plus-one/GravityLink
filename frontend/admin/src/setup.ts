@@ -20,7 +20,6 @@ export interface SetupStatus {
   };
   auth: {
     mode: 'logto' | 'local';
-    disabled: boolean;
     issuer: string;
     app_id: string;
     audience: string;
@@ -53,7 +52,6 @@ export interface SetupPayload {
   };
   auth: {
     mode: 'logto' | 'local';
-    disabled: boolean;
     issuer: string;
     app_id: string;
     audience: string;
@@ -107,7 +105,7 @@ export async function testSetupDatabase(payload: SetupPayload): Promise<{ mysql:
   });
 }
 
-export async function completeSetup(payload: SetupPayload): Promise<{ initialized: boolean; auth_disabled: boolean }> {
+export async function completeSetup(payload: SetupPayload): Promise<{ initialized: boolean }> {
   return setupRequest('/api/setup/complete', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -117,7 +115,6 @@ export async function completeSetup(payload: SetupPayload): Promise<{ initialize
 export function setupAuthConfig(payload: SetupPayload, result: LogtoCheckResult): AuthConfig {
   return {
     mode: 'logto',
-    auth_disabled: false,
     local_enabled: false,
     issuer: result.issuer,
     client_id: payload.auth.app_id,
