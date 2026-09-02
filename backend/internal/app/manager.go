@@ -269,6 +269,7 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
 	go worker.NewAccessLogConsumer(db, redisClient, m.logger).Start(workerCtx)
 	go worker.NewLogArchiver(db, m.logger).Start(workerCtx)
+	go worker.NewStatFlusher(db, redisClient, m.logger).Start(workerCtx)
 
 	m.cfg = cfg
 	m.db = db

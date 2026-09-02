@@ -68,11 +68,14 @@ func (c *AccessLogConsumer) consumeBatch(ctx context.Context) error {
 
 func accessLogFromEvent(event service.AccessEvent) model.AccessLog {
 	referer := optionalLogString(event.Referer)
+	info := service.ParseUserAgent(event.UserAgent)
 	return model.AccessLog{
 		LinkID:     event.LinkID,
 		VisitedAt:  event.VisitedAt,
 		IP:         event.IP,
-		Device:     "unknown",
+		Device:     info.Device,
+		OS:         optionalLogString(info.OS),
+		Browser:    optionalLogString(info.Browser),
 		Referer:    referer,
 		ViaTransit: event.ViaTransit,
 	}
