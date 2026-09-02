@@ -1,18 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from './stores/auth';
 import { useSetupStore } from './stores/setup';
-import AdminLayout from './layouts/AdminLayout.vue';
-import LoginView from './views/LoginView.vue';
-import SetupView from './views/SetupView.vue';
-import AuthCallbackView from './views/AuthCallbackView.vue';
-import DashboardView from './views/DashboardView.vue';
-import DomainsView from './views/DomainsView.vue';
-import LandingPagesView from './views/LandingPagesView.vue';
-import LinksView from './views/LinksView.vue';
-import SettingsView from './views/SettingsView.vue';
-import StatsView from './views/StatsView.vue';
-import UsersView from './views/UsersView.vue';
-import NotFoundView from './views/NotFoundView.vue';
+
+// 视图全部懒加载：登录页/初始化向导不再连带下载全部业务代码与图表库。
+const AdminLayout = () => import('./layouts/AdminLayout.vue');
+const LoginView = () => import('./views/LoginView.vue');
+const SetupView = () => import('./views/SetupView.vue');
+const AuthCallbackView = () => import('./views/AuthCallbackView.vue');
+const DashboardView = () => import('./views/DashboardView.vue');
+const DomainsView = () => import('./views/DomainsView.vue');
+const LandingPagesView = () => import('./views/LandingPagesView.vue');
+const LinksView = () => import('./views/LinksView.vue');
+const SettingsView = () => import('./views/SettingsView.vue');
+const StatsView = () => import('./views/StatsView.vue');
+const UsersView = () => import('./views/UsersView.vue');
+const NotFoundView = () => import('./views/NotFoundView.vue');
 
 const router = createRouter({
   history: createWebHistory(),

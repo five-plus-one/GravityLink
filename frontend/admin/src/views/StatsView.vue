@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { use } from 'echarts/core';
-import { BarChart, LineChart } from 'echarts/charts';
-import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
+// 统一由 echarts.ts 注册图表组件（含饼图），模块加载即完成注册
+import '../echarts';
 import VChart from 'vue-echarts';
 import { BarChart3, RefreshCw } from '@lucide/vue';
 import { NButton, NCard, NEmpty, NGrid, NGridItem, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
-import { getDailyStats, getHourlyStats, getSummaryStats, listLinks, type DailyPoint, type HourlyPoint, type LinkItem, type SummaryStats } from '../api';
-
-use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
+import {
+  getDailyStats,
+  getDeviceStats,
+  getGeoStats,
+  getHourlyStats,
+  getSummaryStats,
+  listLinks,
+  type DailyPoint,
+  type DeviceStats,
+  type HourlyPoint,
+  type LabelValue,
+  type LinkItem,
+  type SummaryStats,
+} from '../api';
 
 const message = useMessage();
 
@@ -19,6 +28,20 @@ const loading = ref(false);
 const summary = ref<SummaryStats | null>(null);
 const daily = ref<DailyPoint[]>([]);
 const hourly = ref<HourlyPoint[]>([]);
+const deviceStats = ref<DeviceStats | null>(null);
+const geo = ref<LabelValue[]>([]);
+
+const deviceLabels: Record<string, string> = {
+  mobile: '手机',
+  tablet: '平板',
+  desktop: '桌面',
+  bot: '机器人',
+  unknown: '未知',
+};
+
+function labelOf(value: string): string {
+  return deviceLabels[value] ?? (value || '未知');
+}
 
 const linkOptions = computed(() =>
   links.value.map((link) => ({
@@ -87,6 +110,53 @@ const hourlyOption = computed(() => ({
   ],
 }));
 
+function pieOption(items: LabelValue[]) {
+  return {
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0 },
+    series: [
+      {
+        type: 'pie',
+        radius: ['40%', '65%'],
+        center: ['50%', '45%'],
+        data: items.map((item) => ({ name: labelOf(item.label), value: item.value })),
+        label: { formatter: '{b} {d}%' },
+      },
+    ],
+  };
+}
+
+function horizontalBarOption(items: LabelValue[], color: string) {
+  return {
+    grid: { left: 90, right: 40, top: 10, bottom: 30 },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    xAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: '#edf1f2' } },
+      axisLabel: { color: '#48565e' },
+    },
+    yAxis: {
+      type: 'category',
+      data: items.map((item) => labelOf(item.label)),
+      axisLine: { lineStyle: { color: '#c2cdd2' } },
+      axisLabel: { color: '#48565e' },
+    },
+    series: [
+      {
+        type: 'bar',
+        data: items.map((item) => item.value),
+        itemStyle: { color, borderRadius: [0, 3, 3, 0] },
+        barMaxWidth: 16,
+      },
+    ],
+  };
+}
+
+const deviceOption = computed(() => pieOption(deviceStats.value?.device ?? []));
+const osOption = computed(() => horizontalBarOption(deviceStats.value?.os ?? [], '#1d4ed8'));
+const browserOption = computed(() => horizontalBarOption(deviceStats.value?.browser ?? [], '#0f766e'));
+const geoOption = computed(() => pieOption(geo.value));
+
 onMounted(async () => {
   try {
     links.value = (await listLinks()).items;
@@ -108,7 +178,13 @@ async function load() {
   loading.value = true;
   try {
     const id = selectedLinkId.value;
-    [summary.value, daily.value, hourly.value] = await Promise.all([getSummaryStats(id), getDailyStats(id), getHourlyStats(id)]);
+    [summary.value, daily.value, hourly.value, deviceStats.value, geo.value] = await Promise.all([
+      getSummaryStats(id),
+      getDailyStats(id),
+      getHourlyStats(id),
+      getDeviceStats(id),
+      getGeoStats(id),
+    ]);
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载统计失败');
   } finally {
@@ -173,7 +249,7 @@ async function load() {
           </NGridItem>
         </NGrid>
 
-        <NGrid :cols="2" :x-gap="16" responsive="screen" item-responsive>
+        <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
           <NGridItem span="2 m:1">
             <NCard title="每日访问（近 30 天）" size="small" embedded>
               <VChart :option="dailyOption" autoresize style="height: 320px" />
@@ -182,6 +258,46 @@ async function load() {
           <NGridItem span="2 m:1">
             <NCard title="今日 24 小时分布" size="small" embedded>
               <VChart :option="hourlyOption" autoresize style="height: 320px" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="2 m:1">
+            <NCard title="设备分布" size="small" embedded>
+              <NEmpty
+                v-if="(deviceStats?.device?.length ?? 0) === 0"
+                description="暂无数据，今日访问将在次日汇总"
+                style="padding: 60px 0"
+              />
+              <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="2 m:1">
+            <NCard title="操作系统" size="small" embedded>
+              <NEmpty
+                v-if="(deviceStats?.os?.length ?? 0) === 0"
+                description="暂无数据，今日访问将在次日汇总"
+                style="padding: 60px 0"
+              />
+              <VChart v-else :option="osOption" autoresize style="height: 320px" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="2 m:1">
+            <NCard title="浏览器" size="small" embedded>
+              <NEmpty
+                v-if="(deviceStats?.browser?.length ?? 0) === 0"
+                description="暂无数据，今日访问将在次日汇总"
+                style="padding: 60px 0"
+              />
+              <VChart v-else :option="browserOption" autoresize style="height: 320px" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="2 m:1">
+            <NCard title="地域分布" size="small" embedded>
+              <NEmpty
+                v-if="geo.length === 0"
+                description="地域解析服务未启用，暂无数据"
+                style="padding: 60px 0"
+              />
+              <VChart v-else :option="geoOption" autoresize style="height: 320px" />
             </NCard>
           </NGridItem>
         </NGrid>

@@ -17,6 +17,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 700,
+    // vendor-ui（naive-ui 按需引用组件）与 vendor-charts（echarts）为有意分包，
+    // 均在对应路由懒加载时才下载，阈值按实际产物调整以保持构建输出干净
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // 大体积三方库单独分包：业务代码更新时不连带重新下载
+        manualChunks: {
+          'vendor-vue': ['vue', 'vue-router', 'pinia'],
+          'vendor-ui': ['naive-ui'],
+          'vendor-charts': ['echarts', 'vue-echarts'],
+        },
+      },
+    },
   },
 });

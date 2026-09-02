@@ -114,6 +114,17 @@ export interface HourlyPoint {
   pv: number;
 }
 
+export interface LabelValue {
+  label: string;
+  value: number;
+}
+
+export interface DeviceStats {
+  device: LabelValue[];
+  os: LabelValue[];
+  browser: LabelValue[];
+}
+
 export interface AuthConfigStatus {
   issuer: string;
   client_id: string;
@@ -202,6 +213,14 @@ export async function getDailyStats(linkId: number): Promise<DailyPoint[]> {
 
 export async function getHourlyStats(linkId: number): Promise<HourlyPoint[]> {
   return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly`);
+}
+
+export async function getGeoStats(linkId: number): Promise<LabelValue[]> {
+  return request<LabelValue[]>(`/api/v1/stats/${linkId}/geo`);
+}
+
+export async function getDeviceStats(linkId: number): Promise<DeviceStats> {
+  return request<DeviceStats>(`/api/v1/stats/${linkId}/device`);
 }
 
 export async function getSystemConfigs(): Promise<ConfigListData> {
