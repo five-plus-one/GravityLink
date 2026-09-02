@@ -137,7 +137,18 @@ function handleMenuSelect(key: string) {
 
 <style scoped>
 .admin-shell {
-  min-height: 100vh;
+  height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .admin-shell {
+    height: 100dvh;
+  }
+}
+
+/* 高度穿透到 NLayout 内部滚动容器，保证侧边栏与主区撑满视口 */
+.admin-shell :deep(.n-layout-scroll-container) {
+  height: 100%;
 }
 
 .admin-sider {
@@ -238,9 +249,14 @@ function handleMenuSelect(key: string) {
 }
 
 .admin-main {
+  background: var(--color-bg-page);
+}
+
+/* 让 header + main 的纵向 flex 布局作用在 NLayout 内部滚动容器上 */
+.admin-main :deep(.n-layout-scroll-container) {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-page);
 }
 
 .main-header {
@@ -259,6 +275,7 @@ function handleMenuSelect(key: string) {
 
 .main-body {
   flex: 1;
+  min-height: 0;
   padding: var(--space-6);
   overflow-y: auto;
 }
