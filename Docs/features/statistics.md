@@ -10,9 +10,12 @@
 [热层] Redis 实时计数（PV/UV 原子累加，访问日志队列）
    ↓  （Worker 每 5 秒批量消费）
 [温层] MySQL access_logs（原始日志，保留 90 天）
-   ↓  （Worker 每小时整点聚合）
+   ↓  （StatFlusher 每分钟落盘非今日计数）
 [冷层] MySQL stat_* 聚合表（长期保留，查询直接用此层）
 ```
+
+> 读接口策略：非今日数据读 `stat_*` 聚合表；今日数据实时叠加 Redis 计数。
+> StatFlusher 只落盘「非今日」的 key，今日 key 保留在 Redis 提供实时值，两者无缝衔接。
 
 ## 数据采集
 
@@ -21,10 +24,11 @@
 ### Redis 实时写入
 
 ```
-Redis INCR  stat:pv:{link_id}:{yyyymmdd}           # 日 PV
-Redis PFADD stat:uv:{link_id}:{yyyymmdd} {ip}      # 日 UV（HyperLogLog，误差 <1%）
-Redis INCR  stat:hourly:{link_id}:{yyyymmdd}:{hh}  # 小时 PV
-Redis LPUSH access:stream {json_payload}            # 访问日志入队
+Redis INCR   stat:pv:{link_id}:{yyyymmdd}           # 日 PV
+Redis PFADD  stat:uv:{link_id}:{yyyymmdd} {ip}      # 日 UV（HyperLogLog，误差 <1%）
+Redis INCR   stat:hourly:{link_id}:{yyyymmdd}:{hh}  # 小时 PV
+Redis HINCRBY stat:dev:{link_id}:{yyyymmdd}         # 设备维度 Hash，field 为 "device|os|browser"
+Redis LPUSH  access:stream {json_payload}           # 访问日志入队
 ```
 
 ### access:stream 日志格式
@@ -45,20 +49,26 @@ Redis LPUSH access:stream {json_payload}            # 访问日志入队
 ### log_consumer（每 5 秒）
 
 1. `LRANGE access:stream 0 99`（最多取 100 条）
-2. 并发解析：IP → 国家/省份/城市/ISP（ip2region）；UA → 设备/OS/浏览器
+2. 解析 UA → 设备/OS/浏览器（`internal/service/useragent.go`，纯关键词匹配，零外部依赖；设备取值 mobile/tablet/desktop/bot/unknown，浏览器识别 WeChat/QQ/Edge/Firefox/Chrome/Safari）
 3. 批量 `INSERT INTO access_logs`
 4. `LTRIM access:stream 100 -1`
 
-### stat_flush（每小时整点）
+### stat_flush（每分钟）
 
-1. 扫描 `stat:pv:*` 键（SCAN 命令，避免 KEYS 阻塞）
-2. 批量 `GETDEL`，解析 link_id 和日期
-3. `INSERT INTO stat_daily ... ON DUPLICATE KEY UPDATE pv = pv + ?`
-4. 同步处理 `stat:uv:*`（`PFCOUNT` 后 `DEL`）、`stat:hourly:*`
+1. `SCAN` 扫描 `stat:pv:*`、`stat:uv:*`、`stat:hourly:*`、`stat:dev:*`（避免 KEYS 阻塞）
+2. 只处理「日期 < 今天」的 key（今日 key 保留给读接口叠加实时值）
+3. 幂等覆盖写入（`ON DUPLICATE KEY UPDATE` 设为读取值），MySQL 写成功后才 `DEL` Redis key，失败下轮重试
+4. `stat:pv/uv` → `stat_daily`（uv 同时写入 ip_count）；`stat:hourly` → `stat_hourly`；`stat:dev` → `stat_device`
 
 ### log_archiver（每天凌晨 2 点）
 
 将 90 天前的 `access_logs` 记录移到 `access_logs_archive` 表（结构相同），然后从主表删除。
+
+## 已知缺口：地域解析未启用
+
+`stat_geo` 表与 `/geo` API 已就绪，但**数据写入侧未实现**（需引入 ip2region 等 IP 地理库，
+涉及外部数据文件分发，暂缓）。当前地域分布 API 返回空数组，管理端地域卡片显示「地域解析服务未启用」。
+`access_logs` 的 country/province/city/isp 列同样为空，待 IP 库接入后一并补齐。
 
 ## 统计查询 API
 
