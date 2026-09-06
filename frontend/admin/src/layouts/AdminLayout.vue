@@ -9,7 +9,9 @@ import {
   LayoutTemplate,
   Link2,
   LogOut,
+  Menu,
   Settings,
+  UserRound,
   Users,
 } from '@lucide/vue';
 import { NAvatar, NButton, NDropdown, NIcon, NLayout, NLayoutSider, NMenu, NText, useMessage, type MenuOption } from 'naive-ui';
@@ -29,6 +31,7 @@ const nav = [
   { key: 'landing-pages', label: '落地页', icon: LayoutTemplate, to: '/landing-pages' },
   { key: 'stats', label: '统计', icon: BarChart3, to: '/stats' },
   { key: 'users', label: '账号与权限', icon: Users, to: '/users' },
+  { key: 'profile', label: '个人中心', icon: UserRound, to: '/profile' },
   { key: 'settings', label: '系统设置', icon: Settings, to: '/settings' },
 ];
 
@@ -40,6 +43,7 @@ const menuOptions: MenuOption[] = nav.map((item) => ({
 
 const activeKey = computed(() => (route.name as string) || 'dashboard');
 const pageTitle = computed(() => (route.meta.title as string) || '');
+const pageSubtitle = computed(() => (route.meta.subtitle as string) || '集中管理链接、域名与访问数据');
 const publicEntryUrl = computed(() => window.location.origin);
 
 const roleLabel = computed(() => {
@@ -122,9 +126,19 @@ function handleMenuSelect(key: string) {
 
     <NLayout class="admin-main">
       <header class="main-header">
-        <h1>{{ pageTitle }}</h1>
+        <NButton quaternary circle aria-label="折叠侧栏" @click="collapsed = !collapsed">
+          <template #icon><Menu :size="20" /></template>
+        </NButton>
+        <div class="header-user">
+          <NText depth="2">{{ auth.user?.username }}</NText>
+          <NAvatar round size="small" class="header-avatar">{{ auth.user?.username?.slice(0, 1).toUpperCase() }}</NAvatar>
+        </div>
       </header>
       <main class="main-body">
+        <div class="page-heading">
+          <h1>{{ pageTitle }}</h1>
+          <p>{{ pageSubtitle }}</p>
+        </div>
         <RouterView v-slot="{ Component }">
           <Transition name="page" mode="out-in">
             <component :is="Component" />
@@ -153,6 +167,8 @@ function handleMenuSelect(key: string) {
 
 .admin-sider {
   background: var(--color-bg-sidebar);
+  border-right: 1px solid rgba(229, 236, 245, 0.9);
+  backdrop-filter: blur(18px);
 }
 
 .admin-sider :deep(.n-layout-sider-scroll-container) {
@@ -165,7 +181,8 @@ function handleMenuSelect(key: string) {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-4);
-  color: var(--color-text-inverse);
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .brand-text strong,
@@ -182,20 +199,27 @@ function handleMenuSelect(key: string) {
 .sider-menu {
   flex: 1;
   background: transparent;
-  --n-item-text-color: rgba(255, 255, 255, 0.72);
-  --n-item-text-color-hover: #fff;
-  --n-item-text-color-active: #fff;
-  --n-item-color-hover: rgba(255, 255, 255, 0.06);
-  --n-item-color-active: var(--color-primary);
-  --n-item-icon-color: rgba(255, 255, 255, 0.72);
-  --n-item-icon-color-hover: #fff;
-  --n-item-icon-color-active: #fff;
-  --n-arrow-color: rgba(255, 255, 255, 0.6);
+  padding: var(--space-3) var(--space-2);
+  --n-item-text-color: var(--color-text-secondary);
+  --n-item-text-color-hover: var(--color-primary);
+  --n-item-text-color-active: var(--color-primary);
+  --n-item-text-color-active-hover: var(--color-primary);
+  --n-item-color-hover: #f2f7ff;
+  --n-item-color-active: var(--color-primary-soft);
+  --n-item-color-active-hover: var(--color-primary-soft);
+  --n-item-icon-color: var(--color-text-secondary);
+  --n-item-icon-color-hover: var(--color-primary);
+  --n-item-icon-color-active: var(--color-primary);
+  --n-arrow-color: var(--color-text-tertiary);
+}
+
+.sider-menu :deep(.n-menu-item-content) {
+  border-radius: var(--radius-md);
 }
 
 .sider-footer {
   padding: var(--space-3) var(--space-4) var(--space-4);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--color-border);
   display: grid;
   gap: var(--space-3);
 }
@@ -207,7 +231,7 @@ function handleMenuSelect(key: string) {
 }
 
 .public-link:hover {
-  color: var(--color-text-inverse);
+  color: var(--color-primary);
 }
 
 .sider-user {
@@ -221,7 +245,7 @@ function handleMenuSelect(key: string) {
 }
 
 .sider-user:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-primary-soft);
 }
 
 .user-avatar {
@@ -237,7 +261,7 @@ function handleMenuSelect(key: string) {
 .user-name,
 .user-role {
   display: block;
-  color: var(--color-text-inverse);
+  color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -249,7 +273,11 @@ function handleMenuSelect(key: string) {
 }
 
 .admin-main {
-  background: var(--color-bg-page);
+  background:
+    radial-gradient(circle at 16% 8%, rgba(77, 159, 255, 0.14), transparent 30%),
+    radial-gradient(circle at 84% 10%, rgba(146, 125, 255, 0.12), transparent 32%),
+    radial-gradient(circle at 70% 88%, rgba(75, 205, 205, 0.09), transparent 34%),
+    var(--color-bg-page);
 }
 
 /* 让 header + main 的纵向 flex 布局作用在 NLayout 内部滚动容器上 */
@@ -264,25 +292,52 @@ function handleMenuSelect(key: string) {
   padding: 0 var(--space-6);
   display: flex;
   align-items: center;
-  background: var(--color-bg-surface);
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.82);
   border-bottom: 1px solid var(--color-border);
+  backdrop-filter: blur(18px);
 }
 
-.main-header h1 {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-md);
+}
+
+.header-avatar {
+  background: linear-gradient(135deg, var(--color-primary), #7067f0);
+  color: #fff;
+  font-weight: 700;
 }
 
 .main-body {
   flex: 1;
   min-height: 0;
-  padding: var(--space-6);
+  padding: var(--space-8);
   overflow-y: auto;
 }
 
 .main-body > * {
   max-width: var(--layout-content-max);
   margin: 0 auto;
+}
+
+.page-heading {
+  margin-bottom: var(--space-6);
+}
+
+.page-heading h1 {
+  font-size: var(--font-size-3xl);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-heading p {
+  margin-top: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-base);
 }
 
 /* 过渡 */

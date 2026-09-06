@@ -13,6 +13,8 @@ import {
   NInput,
   NModal,
   NSkeleton,
+  NTabPane,
+  NTabs,
   useMessage,
 } from 'naive-ui';
 import { getSystemConfigs, resetSystem, updateSystemConfigs, type AuthConfigStatus } from '../api';
@@ -115,25 +117,26 @@ async function executeReset() {
     <NSkeleton v-if="loading" :repeat="4" height="120px" :sharp="false" style="display:grid;gap:16px" />
 
     <template v-else>
-      <NCard>
-        <template #header>
-          <div class="card-head">
-            <div>
-              <strong>公开访问提示</strong>
-              <p class="muted">首页、未知短码和过期链接都会使用这些文案</p>
-            </div>
-            <div class="card-actions">
-              <NButton text tag="a" href="/" target="_blank">
-                <template #icon><ExternalLink :size="14" /></template>
-                预览公开入口
-              </NButton>
-              <NButton type="primary" :loading="saving" @click="save">
-                <template #icon><Save :size="16" /></template>
-                保存更改
-              </NButton>
-            </div>
+      <NCard class="settings-shell">
+        <NTabs type="line" animated pane-style="padding-top: var(--space-5)">
+          <NTabPane name="public" tab="网站配置">
+      <section class="settings-section">
+        <div class="section-head">
+          <div>
+            <strong>公开访问提示</strong>
+            <p class="muted">首页、未知短码和过期链接都会使用这些文案</p>
           </div>
-        </template>
+          <div class="card-actions">
+            <NButton text tag="a" href="/" target="_blank">
+              <template #icon><ExternalLink :size="14" /></template>
+              预览公开入口
+            </NButton>
+            <NButton type="primary" :loading="saving" @click="save">
+              <template #icon><Save :size="16" /></template>
+              保存更改
+            </NButton>
+          </div>
+        </div>
 
         <NForm label-placement="top">
           <div class="form-grid">
@@ -147,25 +150,29 @@ async function executeReset() {
             <NFormItem label="链接过期说明" class="span-2"><NInput v-model:value="form.goneMessage" type="textarea" :rows="3" /></NFormItem>
           </div>
         </NForm>
-      </NCard>
+      </section>
+          </NTabPane>
 
-      <NCard title="身份认证">
-        <template #header-extra><span class="muted">认证提供方本身只能通过重新初始化修改</span></template>
+          <NTabPane name="auth" tab="认证配置">
+      <section class="settings-section">
+        <div class="section-head">
+          <div><strong>身份认证</strong><p class="muted">认证提供方本身只能通过重新初始化修改</p></div>
+        </div>
         <NDescriptions :column="2" label-placement="left" bordered>
           <NDescriptionsItem label="模式">{{ authModeLabel }}</NDescriptionsItem>
           <NDescriptionsItem label="当前账号">{{ auth.user?.username }} · {{ auth.user?.role }}</NDescriptionsItem>
           <NDescriptionsItem label="Issuer">{{ authInfo?.issuer || '不适用' }}</NDescriptionsItem>
           <NDescriptionsItem label="Audience">{{ authInfo?.audience || '不适用' }}</NDescriptionsItem>
         </NDescriptions>
-      </NCard>
+      </section>
+          </NTabPane>
 
-      <NCard v-if="auth.isSuperAdmin" class="danger-card">
-        <template #header>
+          <NTabPane v-if="auth.isSuperAdmin" name="danger" tab="危险区">
+      <section class="settings-section danger-card">
           <div class="danger-head">
             <AlertTriangle :size="18" />
             <strong>危险区</strong>
           </div>
-        </template>
         <div class="danger-body">
           <div>
             <strong>恢复到未初始化状态</strong>
@@ -176,6 +183,9 @@ async function executeReset() {
             清除所有配置
           </NButton>
         </div>
+      </section>
+          </NTabPane>
+        </NTabs>
       </NCard>
     </template>
 
@@ -211,24 +221,30 @@ async function executeReset() {
   gap: var(--space-5);
 }
 
-.card-head {
+.settings-shell {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.settings-shell :deep(.n-tabs-nav) {
+  padding: 0 var(--space-2);
+}
+
+.settings-section {
+  padding: var(--space-2) var(--space-2) var(--space-3);
+}
+
+.section-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  width: 100%;
-  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.card-head strong {
-  font-size: var(--font-size-lg);
-  display: block;
-}
-
-.card-head p {
-  margin-top: var(--space-1);
-  font-size: var(--font-size-md);
-}
+.section-head strong { font-size: var(--font-size-lg); }
+.section-head p { margin-top: var(--space-1); }
 
 .card-actions {
   display: flex;
@@ -247,10 +263,9 @@ async function executeReset() {
 }
 
 .danger-card {
-  border-color: var(--color-error);
-}
-
-.danger-card :deep(.n-card-header) {
+  padding: var(--space-5);
+  border: 1px solid rgba(179, 38, 30, .24);
+  border-radius: var(--radius-lg);
   background: var(--color-error-bg);
 }
 

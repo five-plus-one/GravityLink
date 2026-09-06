@@ -21,16 +21,16 @@ void darkTheme;
 // 把 Naive UI 主题变量对齐到设计令牌（tokens.css）
 const themeOverrides: GlobalThemeOverrides = {
   common: {
-    primaryColor: '#0f766e',
-    primaryColorHover: '#0d655e',
-    primaryColorPressed: '#0b544e',
-    primaryColorSuppl: '#0f766e',
+    primaryColor: '#2787f5',
+    primaryColorHover: '#1877e5',
+    primaryColorPressed: '#1267c9',
+    primaryColorSuppl: '#2787f5',
     successColor: '#0e7a5f',
     warningColor: '#8a5a00',
     errorColor: '#b3261e',
-    infoColor: '#1d4ed8',
-    borderRadius: '6px',
-    borderRadiusSmall: '4px',
+    infoColor: '#2787f5',
+    borderRadius: '10px',
+    borderRadiusSmall: '8px',
     fontFamily: 'Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
     fontSize: '14px',
   },

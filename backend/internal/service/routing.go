@@ -58,8 +58,8 @@ func (s *RoutingService) CreateStrategy(tx *gorm.DB, linkID uint64, input *Strat
 
 	targets := make([]model.RoutingTarget, 0, len(input.Targets))
 	for _, item := range input.Targets {
-		if item.TargetURL == "" {
-			return ErrTargetUnavailable
+		if err := validateTargetURL(item.TargetURL); err != nil {
+			return err
 		}
 		weight := item.Weight
 		if weight == 0 {

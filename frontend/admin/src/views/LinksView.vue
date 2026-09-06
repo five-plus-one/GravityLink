@@ -13,6 +13,7 @@ import {
   NFormItem,
   NIcon,
   NInput,
+  NInputNumber,
   NModal,
   NPopconfirm,
   NRadioButton,
@@ -58,7 +59,8 @@ const form = reactive({
   code: '',
   entryDomainId: null as number | null,
   targetUrl: '',
-  targets: '',
+  strategyMode: 'round_robin' as 'round_robin' | 'weighted',
+  targets: [{ label: '', url: '', weight: 1, scanLimit: null as number | null }],
   expireAt: null as number | null,
   status: 'active' as 'active' | 'disabled',
 });
@@ -72,6 +74,11 @@ const typeOptions = [
   { label: '短链接', value: 'short' },
   { label: '渠道链接', value: 'channel' },
   { label: '活码', value: 'liveqr' },
+];
+
+const strategyOptions = [
+  { label: '顺序阈值模式', value: 'round_robin' },
+  { label: '权重模式', value: 'weighted' },
 ];
 
 const statusTypeMap: Record<string, 'success' | 'warning' | 'default' | 'error'> = {
@@ -119,15 +126,15 @@ const rules: FormRules = {
   targets: [
     {
       required: true,
-      validator: (_rule, value: string) => {
+      validator: () => {
         if (form.type !== 'liveqr') return true;
-        const lines = value.split('\n').map((v) => v.trim()).filter(Boolean);
-        if (!lines.length) return new Error('请至少填写一个轮询目标');
-        for (const line of lines) {
+        if (!form.targets.length) return new Error('请至少添加一个二维码目标');
+        for (const item of form.targets) {
           try {
-            new URL(line);
+            const url = new URL(item.url);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error();
           } catch {
-            return new Error(`存在非法 URL：${line}`);
+            return new Error(`目标“${item.label || '未命名'}”的 URL 格式不正确`);
           }
         }
         return true;
@@ -267,7 +274,8 @@ function openCreate() {
     code: '',
     entryDomainId: domains.entryDomains[0]?.ID ?? null,
     targetUrl: '',
-    targets: '',
+    strategyMode: 'round_robin',
+    targets: [{ label: '', url: '', weight: 1, scanLimit: null }],
     expireAt: null,
     status: 'active',
   });
@@ -284,7 +292,8 @@ function openEdit(row: LinkItem) {
     code: row.Code,
     entryDomainId: null,
     targetUrl: row.TargetURL || '',
-    targets: '',
+    strategyMode: 'round_robin',
+    targets: [{ label: '', url: '', weight: 1, scanLimit: null }],
     expireAt: null,
     status: (row.Status === 'disabled' ? 'disabled' : 'active') as 'active' | 'disabled',
   });
@@ -313,12 +322,13 @@ async function submit() {
         strategy:
           form.type === 'liveqr'
             ? {
-                mode: 'round_robin',
-                targets: form.targets
-                  .split('\n')
-                  .map((v) => v.trim())
-                  .filter(Boolean)
-                  .map((target_url) => ({ target_url, weight: 1 })),
+                mode: form.strategyMode,
+                targets: form.targets.map((item) => ({
+                  label: item.label.trim() || undefined,
+                  target_url: item.url.trim(),
+                  weight: form.strategyMode === 'weighted' ? item.weight : 1,
+                  scan_limit: item.scanLimit ?? undefined,
+                })),
               }
             : undefined,
       });
@@ -363,6 +373,15 @@ async function copyShortUrl(row: LinkItem) {
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : '操作失败';
+}
+
+function addTarget() {
+  form.targets.push({ label: '', url: '', weight: 1, scanLimit: null });
+}
+
+function removeTarget(index: number) {
+  if (form.targets.length === 1) return;
+  form.targets.splice(index, 1);
 }
 </script>
 
@@ -410,7 +429,13 @@ function messageOf(err: unknown): string {
     </NDataTable>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" :title="modalMode === 'create' ? '创建链接' : '编辑链接'" style="width: 620px" :mask-closable="false">
+  <NModal
+    v-model:show="showModal"
+    preset="card"
+    :title="modalMode === 'create' ? '创建链接' : '编辑链接'"
+    :style="{ width: form.type === 'liveqr' && modalMode === 'create' ? 'min(920px, 94vw)' : 'min(620px, 94vw)' }"
+    :mask-closable="false"
+  >
     <NForm ref="formRef" :model="form" :rules="rules" label-placement="top" require-mark-placement="right">
       <NFormItem v-if="modalMode === 'create'" label="类型">
         <NRadioGroup v-model:value="form.type">
@@ -441,9 +466,42 @@ function messageOf(err: unknown): string {
       <NFormItem v-if="form.type !== 'liveqr'" label="目标 URL" path="targetUrl">
         <NInput v-model:value="form.targetUrl" placeholder="https://example.com/path" />
       </NFormItem>
-      <NFormItem v-else label="轮询目标" path="targets">
-        <NInput v-model:value="form.targets" type="textarea" :rows="4" placeholder="每行一个完整 URL" />
-      </NFormItem>
+      <template v-else>
+        <div class="liveqr-section">
+          <div class="section-title">
+            <div><strong>分发策略</strong><p class="muted">决定多个二维码目标的展示方式</p></div>
+            <NSelect v-model:value="form.strategyMode" :options="strategyOptions" style="width: 160px" />
+          </div>
+          <NAlert type="info" :show-icon="true">
+            {{ form.strategyMode === 'round_robin' ? '按添加顺序使用目标，达到扫码上限后切换下一项；上限留空时会持续使用该目标。' : '权重模式按比例随机分发，权重越高，被选中的概率越大。' }}
+          </NAlert>
+        </div>
+
+        <NFormItem label="二维码目标" path="targets">
+          <div class="target-list">
+            <div v-for="(target, index) in form.targets" :key="index" class="target-row">
+              <div class="target-index">{{ index + 1 }}</div>
+              <NInput v-model:value="target.label" placeholder="名称（可选）" />
+              <NInput v-model:value="target.url" placeholder="https://example.com/qr.png" />
+              <NInputNumber
+                v-if="form.strategyMode === 'weighted'"
+                v-model:value="target.weight"
+                :min="1"
+                :precision="0"
+                placeholder="权重"
+              />
+              <NInputNumber v-model:value="target.scanLimit" :min="1" :precision="0" clearable placeholder="扫码上限" />
+              <NButton text type="error" :disabled="form.targets.length === 1" aria-label="删除目标" @click="removeTarget(index)">
+                <template #icon><Trash2 :size="16" /></template>
+              </NButton>
+            </div>
+            <NButton dashed block @click="addTarget">
+              <template #icon><Plus :size="16" /></template>
+              添加二维码目标
+            </NButton>
+          </div>
+        </NFormItem>
+      </template>
 
       <NFormItem label="过期时间（可选）">
         <NDatePicker v-model:value="form.expireAt" type="datetime" clearable style="width: 100%" />
@@ -503,9 +561,68 @@ function messageOf(err: unknown): string {
   gap: var(--space-3);
 }
 
+.liveqr-section {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-subtle);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.section-title p { margin-top: var(--space-1); }
+
+.target-list {
+  width: 100%;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.target-row {
+  display: grid;
+  grid-template-columns: 28px minmax(110px, .55fr) minmax(220px, 1.4fr) minmax(100px, .45fr) 32px;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.target-row:has(.n-input-number:nth-of-type(2)) {
+  grid-template-columns: 28px minmax(100px, .5fr) minmax(190px, 1.25fr) 90px 110px 32px;
+}
+
+.target-index {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
 @media (max-width: 640px) {
   .form-row {
     grid-template-columns: 1fr;
+  }
+  .target-row,
+  .target-row:has(.n-input-number:nth-of-type(2)) {
+    grid-template-columns: 28px 1fr 32px;
+  }
+  .target-row > :not(.target-index):not(button) {
+    grid-column: 2;
+  }
+  .target-row > button {
+    grid-column: 3;
+    grid-row: 1;
   }
 }
 </style>

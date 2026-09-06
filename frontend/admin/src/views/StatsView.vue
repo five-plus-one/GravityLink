@@ -292,11 +292,7 @@ async function load() {
           </NGridItem>
           <NGridItem span="2 m:1">
             <NCard title="地域分布" size="small" embedded>
-              <NEmpty
-                v-if="geo.length === 0"
-                description="地域解析服务未启用，暂无数据"
-                style="padding: 60px 0"
-              />
+              <NEmpty v-if="geo.length === 0" description="暂无数据" style="padding: 60px 0" />
               <VChart v-else :option="geoOption" autoresize style="height: 320px" />
             </NCard>
           </NGridItem>

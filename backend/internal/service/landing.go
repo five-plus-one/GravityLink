@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -96,6 +97,12 @@ func (s *LandingService) RenderByCode(ctx context.Context, code string) (string,
 	}
 	if err != nil {
 		return "", http.StatusInternalServerError, 0, err
+	}
+	if link.Status == model.LinkStatusDisabled {
+		return "", http.StatusNotFound, 0, ErrLinkDisabled
+	}
+	if link.ExpireAt != nil && time.Now().After(*link.ExpireAt) {
+		return "", http.StatusGone, 0, ErrLinkExpired
 	}
 	if link.LandingPageID == nil {
 		return "", http.StatusNotFound, 0, ErrLandingNotFound

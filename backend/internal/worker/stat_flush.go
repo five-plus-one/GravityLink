@@ -23,7 +23,8 @@ const (
 
 // StatFlusher 周期性把 Redis 中的访问计数（非今日）落盘到 MySQL 聚合表：
 // stat:pv/uv:{link}:{day} → stat_daily，stat:hourly:{link}:{day}:{hour} → stat_hourly，
-// stat:dev:{link}:{day} → stat_device。今日 key 保留在 Redis，供读接口叠加实时值。
+// stat:dev:{link}:{day} → stat_device，stat:geo:{link}:{day} → stat_geo。
+// 今日 key 保留在 Redis，供读接口叠加实时值。
 //
 // 写入采用幂等覆盖（写成功后才删 key），单实例部署下重试安全。
 type StatFlusher struct {
@@ -60,6 +61,9 @@ func (f *StatFlusher) flush(ctx context.Context) {
 	}
 	if err := f.flushDevice(ctx, today); err != nil {
 		f.logger.Warn("flush stat_device failed", "error", err)
+	}
+	if err := f.flushGeo(ctx, today); err != nil {
+		f.logger.Warn("flush stat_geo failed", "error", err)
 	}
 }
 
@@ -208,6 +212,61 @@ func (f *StatFlusher) flushDevice(ctx context.Context, today string) error {
 	return nil
 }
 
+// flushGeo 把过期的 stat:geo Hash 写入 stat_geo。
+func (f *StatFlusher) flushGeo(ctx context.Context, today string) error {
+	for _, key := range f.scanKeys(ctx, service.GeoStatKeyPrefix+"*") {
+		body := strings.TrimPrefix(key, service.GeoStatKeyPrefix)
+		linkID, day, ok := splitDayBody(body)
+		if !ok || day >= today {
+			continue
+		}
+
+		fields, err := f.redis.HGetAll(ctx, key).Result()
+		if err != nil {
+			return err
+		}
+		if len(fields) == 0 {
+			_ = f.redis.Del(ctx, key).Err()
+			continue
+		}
+
+		statDate, err := parseStatDate(day)
+		if err != nil {
+			f.logger.Warn("skip invalid stat date", "day", day, "error", err)
+			continue
+		}
+
+		rows := make([]model.StatGeo, 0, len(fields))
+		for field, pv := range fields {
+			country, province, ok := splitGeoField(field)
+			if !ok {
+				f.logger.Warn("skip invalid geo field", "key", key, "field", field)
+				continue
+			}
+			pv64, err := strconv.ParseUint(pv, 10, 64)
+			if err != nil || pv64 == 0 {
+				continue
+			}
+			rows = append(rows, model.StatGeo{
+				LinkID: linkID, StatDate: statDate,
+				Country: country, Province: province, PV: pv64,
+			})
+		}
+		if len(rows) == 0 {
+			_ = f.redis.Del(ctx, key).Err()
+			continue
+		}
+
+		if err := f.db.WithContext(ctx).Clauses(clause.OnConflict{
+			DoUpdates: clause.AssignmentColumns([]string{"pv"}),
+		}).CreateInBatches(rows, 100).Error; err != nil {
+			return err
+		}
+		_ = f.redis.Del(ctx, key).Err()
+	}
+	return nil
+}
+
 func (f *StatFlusher) scanKeys(ctx context.Context, pattern string) []string {
 	var keys []string
 	var cursor uint64
@@ -248,6 +307,15 @@ func splitDeviceField(field string) (device, osName, browser string, ok bool) {
 		return "", "", "", false
 	}
 	return parts[0], parts[1], parts[2], true
+}
+
+// splitGeoField 解析 Hash field "country|province"。
+func splitGeoField(field string) (country, province string, ok bool) {
+	parts := strings.SplitN(field, "|", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 // parseStatDate 把 yyyymmdd 解析为本地时区日期（存入 DATE 列）。

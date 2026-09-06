@@ -184,6 +184,8 @@ type StatDaily struct {
 	IPCount  uint64    `gorm:"column:ip_count;not null;default:0"`
 }
 
+func (StatDaily) TableName() string { return "stat_daily" }
+
 type StatHourly struct {
 	ID       uint64    `gorm:"primaryKey;autoIncrement"`
 	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date_hour"`
@@ -191,6 +193,8 @@ type StatHourly struct {
 	StatHour uint8     `gorm:"not null;uniqueIndex:uk_link_date_hour"`
 	PV       uint64    `gorm:"column:pv;not null;default:0"`
 }
+
+func (StatHourly) TableName() string { return "stat_hourly" }
 
 type StatGeo struct {
 	ID       uint64    `gorm:"primaryKey;autoIncrement"`
@@ -201,6 +205,8 @@ type StatGeo struct {
 	PV       uint64    `gorm:"column:pv;not null;default:0"`
 }
 
+func (StatGeo) TableName() string { return "stat_geo" }
+
 type StatDevice struct {
 	ID       uint64    `gorm:"primaryKey;autoIncrement"`
 	LinkID   uint64    `gorm:"not null;uniqueIndex:uk_link_date_device"`
@@ -210,6 +216,8 @@ type StatDevice struct {
 	Browser  string    `gorm:"size:64;not null;default:'';uniqueIndex:uk_link_date_device"`
 	PV       uint64    `gorm:"column:pv;not null;default:0"`
 }
+
+func (StatDevice) TableName() string { return "stat_device" }
 
 type SystemConfig struct {
 	ID          uint64    `gorm:"primaryKey;autoIncrement"`

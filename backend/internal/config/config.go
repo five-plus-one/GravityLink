@@ -38,6 +38,7 @@ type Config struct {
 	LogtoScopes          string
 	AdminBaseURL         string
 	AdminAllowedRoles    []string
+	GeoDBPath            string
 	BootstrapVerified    bool
 	BootstrapSubject     string
 	BootstrapUsername    string
@@ -293,6 +294,7 @@ func applyEnvironment(cfg *Config) {
 	setString("LOGTO_JWKS_URL", &cfg.LogtoJWKSURL)
 	setString("LOGTO_SCOPES", &cfg.LogtoScopes)
 	setString("ADMIN_BASE_URL", &cfg.AdminBaseURL)
+	setString("GEO_DB_PATH", &cfg.GeoDBPath)
 	if _, dsnSet := os.LookupEnv("MYSQL_DSN"); !dsnSet && anyEnvironmentSet(
 		"MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_PARAMS",
 	) {

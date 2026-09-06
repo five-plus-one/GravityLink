@@ -44,6 +44,9 @@ services:
       CONFIG_FILE: /data/gravitylink.json
       SETUP_DEFAULT_MYSQL_HOST: mysql
       SETUP_DEFAULT_REDIS_HOST: redis
+      # IP 归属地解析（可选）：下载 ip2region.xdb 放入 /data 卷即自动启用，
+      # 文件缺失时降级为不解析，不影响其他功能
+      GEO_DB_PATH: /data/ip2region.xdb
     ports:
       - "${APP_PORT:-8080}:8080"
       - "${ADMIN_PORT:-8081}:8081"

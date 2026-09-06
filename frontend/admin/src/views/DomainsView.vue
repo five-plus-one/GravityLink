@@ -30,6 +30,21 @@ const domainStore = useDomainStore();
 
 const items = ref<DomainItem[]>([]);
 const loading = ref(false);
+const keyword = ref('');
+const selectedType = ref<string | null>(null);
+const filteredItems = computed(() => {
+  const query = keyword.value.trim().toLowerCase();
+  return items.value.filter((item) =>
+    (!selectedType.value || item.Type === selectedType.value) &&
+    (!query || `${item.Scheme}://${item.Host} ${item.Remark || ''}`.toLowerCase().includes(query)),
+  );
+});
+const activeCount = computed(() => items.value.filter((item) => item.Status === 'active').length);
+const disabledCount = computed(() => items.value.filter((item) => item.Status === 'disabled').length);
+function clearFilters() {
+  keyword.value = '';
+  selectedType.value = null;
+}
 const showModal = ref(false);
 const saving = ref(false);
 const modalError = ref('');
@@ -75,7 +90,7 @@ const rules: FormRules = {
 };
 
 const columns: DataTableColumns<DomainItem> = [
-  { title: 'Host', key: 'Host', render: (row) => h('code', {}, `${row.Scheme}://${row.Host}`) },
+  { title: '域名', key: 'Host', render: (row) => h('code', {}, `${row.Scheme}://${row.Host}`) },
   {
     title: '用途',
     key: 'Type',
@@ -170,6 +185,11 @@ function messageOf(err: unknown): string {
 
 <template>
   <div class="page-view">
+    <div class="domain-summary" aria-label="域名概况">
+      <NCard><span class="muted">全部域名</span><strong>{{ loading ? '—' : items.length }}</strong></NCard>
+      <NCard><span class="muted">正常域名</span><strong>{{ loading ? '—' : activeCount }}</strong></NCard>
+      <NCard><span class="muted">已停用</span><strong>{{ loading ? '—' : disabledCount }}</strong></NCard>
+    </div>
     <NCard>
     <template #header>
       <div class="card-head">
@@ -178,7 +198,7 @@ function messageOf(err: unknown): string {
           <p class="muted">管理入口、中转和落地页域名</p>
         </div>
         <div class="card-actions">
-          <NButton :loading="loading" @click="refresh">
+          <NButton :loading="loading" aria-label="刷新域名" @click="refresh">
             <template #icon><RefreshCw :size="16" /></template>
           </NButton>
           <NButton v-if="canWrite" type="primary" @click="openCreate">
@@ -189,20 +209,26 @@ function messageOf(err: unknown): string {
       </div>
     </template>
 
-    <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :bordered="false" size="small">
+    <div class="domain-filters">
+      <NInput v-model:value="keyword" clearable placeholder="搜索域名或备注" aria-label="搜索域名或备注" />
+      <NSelect v-model:value="selectedType" clearable :options="typeOptions" placeholder="全部用途" aria-label="筛选域名用途" />
+      <span class="muted" aria-live="polite">共 {{ filteredItems.length }} 个域名</span>
+    </div>
+    <NDataTable :columns="columns" :data="filteredItems" :loading="loading" :pagination="{ pageSize: 20 }" :row-key="(row: DomainItem) => row.ID" :scroll-x="640" :bordered="false" size="small">
       <template #empty>
-        <NEmpty description="尚未配置域名">
-          <template v-if="canWrite" #extra>
-            <NButton type="primary" size="small" @click="openCreate">添加第一个域名</NButton>
+        <NEmpty :description="items.length ? '没有符合条件的域名' : '尚未配置域名'">
+          <template #extra>
+            <NButton v-if="items.length" size="small" @click="clearFilters">清空筛选</NButton>
+            <NButton v-else-if="canWrite" type="primary" size="small" @click="openCreate">添加第一个域名</NButton>
           </template>
         </NEmpty>
       </template>
     </NDataTable>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" title="添加域名" style="width: 520px" :mask-closable="false">
+  <NModal v-model:show="showModal" preset="card" title="添加域名" style="width: min(600px, calc(100vw - 32px))" :mask-closable="false" :closable="!saving" :close-on-esc="!saving">
     <NForm ref="formRef" :model="form" :rules="rules" label-placement="top">
-      <NFormItem label="Host" path="host">
+      <NFormItem label="域名（不含协议和路径）" path="host">
         <NInput v-model:value="form.host" placeholder="go.example.com" />
       </NFormItem>
       <div class="form-row">
@@ -213,6 +239,7 @@ function messageOf(err: unknown): string {
           <NSelect v-model:value="form.scheme" :options="schemeOptions" />
         </NFormItem>
       </div>
+      <p class="type-description">{{ form.type === 'entry' ? '入口域名：用于生成对外分享的短链接。' : form.type === 'transit' ? '中转域名：作为入口与落地页之间的可选中间层。' : '落地域名：用于展示系统生成的落地页。' }}</p>
       <NFormItem label="备注">
         <NInput v-model:value="form.remark" placeholder="（可选）" />
       </NFormItem>
@@ -222,7 +249,7 @@ function messageOf(err: unknown): string {
 
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: var(--space-2)">
-        <NButton @click="showModal = false">取消</NButton>
+        <NButton :disabled="saving" @click="showModal = false">取消</NButton>
         <NButton type="primary" :loading="saving" @click="submit">添加</NButton>
       </div>
     </template>
@@ -231,6 +258,13 @@ function messageOf(err: unknown): string {
 </template>
 
 <style scoped>
+.domain-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.domain-summary strong { display: block; margin-top: var(--space-2); font-size: var(--font-size-3xl); color: var(--color-text-primary); }
+.domain-filters { display: grid; grid-template-columns: minmax(180px, 1fr) 160px auto; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+.type-description { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+@media (max-width: 600px) {
+  .domain-summary, .domain-filters, .form-row { grid-template-columns: 1fr; }
+}
 .page-view {
   display: grid;
   gap: var(--space-4);
@@ -266,5 +300,8 @@ function messageOf(err: unknown): string {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3);
+}
+@media (max-width: 600px) {
+  .form-row { grid-template-columns: 1fr; }
 }
 </style>

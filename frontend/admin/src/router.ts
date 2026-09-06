@@ -14,6 +14,7 @@ const LinksView = () => import('./views/LinksView.vue');
 const SettingsView = () => import('./views/SettingsView.vue');
 const StatsView = () => import('./views/StatsView.vue');
 const UsersView = () => import('./views/UsersView.vue');
+const ProfileView = () => import('./views/ProfileView.vue');
 const NotFoundView = () => import('./views/NotFoundView.vue');
 
 const router = createRouter({
@@ -37,13 +38,14 @@ const router = createRouter({
       path: '/',
       component: AdminLayout,
       children: [
-        { path: '', name: 'dashboard', component: DashboardView, meta: { title: '概览' } },
-        { path: 'links', name: 'links', component: LinksView, meta: { title: '链接' } },
-        { path: 'domains', name: 'domains', component: DomainsView, meta: { title: '域名' } },
-        { path: 'landing-pages', name: 'landing-pages', component: LandingPagesView, meta: { title: '落地页' } },
-        { path: 'stats', name: 'stats', component: StatsView, meta: { title: '统计' } },
-        { path: 'users', name: 'users', component: UsersView, meta: { title: '账号与权限' } },
-        { path: 'settings', name: 'settings', component: SettingsView, meta: { title: '系统设置' } },
+        { path: '', name: 'dashboard', component: DashboardView, meta: { title: '数据概览', subtitle: '掌握链接、域名和落地页的运行情况' } },
+        { path: 'links', name: 'links', component: LinksView, meta: { title: '链接管理', subtitle: '统一创建与维护短链接、渠道链接和活码' } },
+        { path: 'domains', name: 'domains', component: DomainsView, meta: { title: '域名管理', subtitle: '维护入口、中转与落地域名' } },
+        { path: 'landing-pages', name: 'landing-pages', component: LandingPagesView, meta: { title: '落地页', subtitle: '管理公开访问页面与展示模板' } },
+        { path: 'stats', name: 'stats', component: StatsView, meta: { title: '数据看板', subtitle: '查看访问趋势、设备与地域分布' } },
+        { path: 'users', name: 'users', component: UsersView, meta: { title: '账号与权限', subtitle: '管理后台账号、角色与访问权限' } },
+        { path: 'profile', name: 'profile', component: ProfileView, meta: { title: '个人中心', subtitle: '查看当前账号信息与安全状态' } },
+        { path: 'settings', name: 'settings', component: SettingsView, meta: { title: '系统设置', subtitle: '维护站点配置、认证方式与运行参数' } },
       ],
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { public: true, title: '页面不存在' } },

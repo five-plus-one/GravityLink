@@ -44,7 +44,8 @@ func New(deps Dependencies) *gin.Engine {
 	publicPageService := service.NewPublicPageService(deps.DB, templates)
 	systemConfigService := service.NewSystemConfigService(deps.DB)
 	statService := service.NewStatService(deps.DB, deps.Redis)
-	accessRecorder := service.NewAccessRecorder(deps.Redis)
+	geoResolver := service.NewGeoResolver(deps.Config.GeoDBPath, deps.Logger)
+	accessRecorder := service.NewAccessRecorder(deps.Redis, geoResolver)
 
 	api := engine.Group("/api/v1")
 	registerHealthRoutes(api, deps)

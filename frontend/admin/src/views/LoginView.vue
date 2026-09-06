@@ -122,7 +122,7 @@ async function redirectBack() {
   grid-template-columns: minmax(400px, 1fr) minmax(420px, 1fr);
 }
 
-/* 左侧品牌区：铺满、深色渐变 */
+/* 左侧品牌区独立使用高对比蓝色渐变，不跟随浅色侧栏令牌 */
 .login-hero {
   position: relative;
   display: flex;
@@ -131,9 +131,9 @@ async function redirectBack() {
   gap: var(--space-4);
   padding: var(--space-10);
   background:
-    radial-gradient(ellipse at 20% 0%, rgba(20, 184, 166, 0.25), transparent 55%),
-    radial-gradient(ellipse at 80% 100%, rgba(15, 118, 110, 0.35), transparent 50%),
-    var(--color-bg-sidebar);
+    radial-gradient(ellipse at 20% 0%, rgba(116, 190, 255, 0.42), transparent 55%),
+    radial-gradient(ellipse at 80% 100%, rgba(112, 103, 240, 0.42), transparent 50%),
+    linear-gradient(145deg, #1267c9 0%, #2787f5 52%, #4c6fe8 100%);
   color: var(--color-text-inverse);
   overflow: hidden;
 }

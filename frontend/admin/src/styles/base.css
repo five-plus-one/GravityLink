@@ -20,7 +20,11 @@ body {
   margin: 0;
   min-width: 320px;
   color: var(--color-text-primary);
-  background: var(--color-bg-page);
+  background:
+    radial-gradient(circle at 18% 10%, rgba(85, 165, 255, 0.15), transparent 32%),
+    radial-gradient(circle at 82% 12%, rgba(166, 145, 255, 0.12), transparent 34%),
+    radial-gradient(circle at 66% 90%, rgba(83, 211, 210, 0.1), transparent 36%),
+    var(--color-bg-page);
   font-size: var(--font-size-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -78,10 +82,23 @@ code,
   place-items: center;
   flex: 0 0 auto;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-primary) 100%);
+  background: linear-gradient(135deg, #62a7ff 0%, var(--color-primary) 55%, #7067f0 100%);
   color: #fff;
   font-weight: 700;
   font-size: var(--font-size-lg);
+}
+
+.n-card {
+  border-color: rgba(229, 236, 245, 0.85) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.n-card > .n-card-header {
+  padding-top: var(--space-5);
+}
+
+.n-modal .n-card {
+  box-shadow: var(--shadow-lg);
 }
 
 /* Naive UI 主题变量对齐到设计令牌 */

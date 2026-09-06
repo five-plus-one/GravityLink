@@ -7,7 +7,7 @@ import (
 
 // Assets contains public landing-page assets and the management frontend bundle.
 //
-//go:embed landing admin
+//go:embed all:landing all:admin
 var Assets embed.FS
 
 // TemplateFiles contains all HTML templates rendered by the backend.
