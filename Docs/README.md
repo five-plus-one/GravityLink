@@ -19,6 +19,7 @@
 | 文档 | 说明 | 状态 |
 |-----|------|------|
 | [features/short-link.md](features/short-link.md) | 短链接功能规格 | ✅ 完成 |
+| [features/share-card.md](features/share-card.md) | 微信分享卡片、公众号配置和素材 | 已实现，真实微信待接入验收 |
 | [features/channel-code.md](features/channel-code.md) | 渠道码功能规格 | ✅ 完成 |
 | [features/live-qr.md](features/live-qr.md) | 群活码功能规格 | ✅ 完成 |
 | [features/landing-page.md](features/landing-page.md) | 落地页模板系统规格 | ✅ 完成 |

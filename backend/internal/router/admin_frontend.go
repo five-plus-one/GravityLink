@@ -21,7 +21,7 @@ func NewAdminFrontendHandler(api http.Handler, setupHandlers ...http.Handler) ht
 			setupHandlers[0].ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/uploads/") {
 			api.ServeHTTP(w, r)
 			return
 		}

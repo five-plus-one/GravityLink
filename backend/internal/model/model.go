@@ -90,6 +90,7 @@ type Domain struct {
 }
 
 type Link struct {
+	PublicURL       string `gorm:"-"`
 	ID              uint64 `gorm:"primaryKey;autoIncrement"`
 	Code            string `gorm:"size:32;not null;uniqueIndex:uk_code"`
 	Type            string `gorm:"type:enum('short','channel','liveqr');not null;index:idx_type"`
@@ -157,6 +158,8 @@ type RoutingStrategy struct {
 }
 
 type RoutingTarget struct {
+	ExpireAt     *time.Time
+	Owner        string    `gorm:"size:128"`
 	ID           uint64    `gorm:"primaryKey;autoIncrement"`
 	StrategyID   uint64    `gorm:"not null;index:idx_strategy_id"`
 	Label        *string   `gorm:"size:128"`

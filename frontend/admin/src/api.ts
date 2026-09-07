@@ -2,6 +2,8 @@ import { getAccessToken } from './auth';
 
 export interface LinkItem {
   ID: number;
+  EntryDomainID: number;
+  PublicURL?: string;
   Code: string;
   Type: string;
   TargetURL: string | null;
@@ -261,7 +263,7 @@ export async function resetSystem(confirmation: string, password = ''): Promise<
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set('Content-Type', 'application/json');
+  if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
 
   const token = getAccessToken();
   if (token) {

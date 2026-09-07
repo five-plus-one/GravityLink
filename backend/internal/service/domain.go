@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
@@ -61,7 +63,7 @@ func (s *DomainService) Update(ctx context.Context, id uint64, input DomainInput
 
 	updates := map[string]interface{}{}
 	if input.Host != "" {
-		host := normalizeHost(input.Host)
+		host := strings.ToLower(strings.TrimSpace(input.Host))
 		if !validDomainHost(host) {
 			return model.Domain{}, ErrInvalidDomainHost
 		}
@@ -131,7 +133,7 @@ func (s *DomainService) Get(ctx context.Context, id uint64) (model.Domain, error
 }
 
 func domainFromInput(input DomainInput) (model.Domain, error) {
-	host := normalizeHost(input.Host)
+	host := strings.ToLower(strings.TrimSpace(input.Host))
 	if !validDomainHost(host) {
 		return model.Domain{}, ErrInvalidDomainHost
 	}
@@ -163,10 +165,20 @@ func domainFromInput(input DomainInput) (model.Domain, error) {
 }
 
 func validDomainHost(host string) bool {
-	if host == "" || strings.Contains(host, "/") || strings.Contains(host, "://") {
+	if host == "" || strings.ContainsAny(host, "/?#@ \\") {
 		return false
 	}
-	return strings.Contains(host, ".") || host == "localhost"
+	u, err := url.Parse("http://" + host)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	if u.Port() != "" {
+		p, err := strconv.Atoi(u.Port())
+		if err != nil || p < 1 || p > 65535 {
+			return false
+		}
+	}
+	return strings.Contains(u.Hostname(), ".") || u.Hostname() == "localhost" || strings.Contains(u.Hostname(), ":")
 }
 
 func validDomainType(domainType string) bool {

@@ -95,6 +95,20 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 	if input.Code != "" && !customCodePattern.MatchString(input.Code) {
 		return model.Link{}, ErrInvalidCode
 	}
+	var entry model.Domain
+	if err := s.db.WithContext(ctx).Where("id = ? AND type = ? AND status = ?", input.EntryDomainID, model.DomainTypeEntry, model.StatusActive).First(&entry).Error; err != nil {
+		return model.Link{}, ErrTargetUnavailable
+	}
+	if linkType == model.LinkTypeLiveQR {
+		var page model.LandingPage
+		if err := s.db.WithContext(ctx).Where("id = ? AND domain_id = ? AND template = ?", *input.LandingPageID, *input.LandingDomainID, "liveqr").First(&page).Error; err != nil {
+			return model.Link{}, ErrTargetUnavailable
+		}
+		var domain model.Domain
+		if err := s.db.WithContext(ctx).Where("id = ? AND type = ? AND status = ?", *input.LandingDomainID, model.DomainTypeLanding, model.StatusActive).First(&domain).Error; err != nil {
+			return model.Link{}, ErrTargetUnavailable
+		}
+	}
 
 	targetURL := input.TargetURL
 	var title *string
@@ -133,7 +147,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		if err != nil {
 			return model.Link{}, normalizeCreateError(err)
 		}
-		return link, nil
+		return s.Get(ctx, link.ID)
 	}
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -158,7 +172,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		return model.Link{}, normalizeCreateError(err)
 	}
 
-	return link, nil
+	return s.Get(ctx, link.ID)
 }
 
 func (s *LinkService) List(ctx context.Context, linkType string) ([]model.Link, error) {
@@ -167,7 +181,22 @@ func (s *LinkService) List(ctx context.Context, linkType string) ([]model.Link, 
 	if linkType != "" {
 		query = query.Where("type = ?", linkType)
 	}
-	return links, query.Find(&links).Error
+	if err := query.Find(&links).Error; err != nil {
+		return nil, err
+	}
+	var domains []model.Domain
+	if err := s.db.WithContext(ctx).Where("type = ? AND status = ?", model.DomainTypeEntry, model.StatusActive).Find(&domains).Error; err != nil {
+		return nil, err
+	}
+	for i := range links {
+		for _, d := range domains {
+			if d.ID == links[i].EntryDomainID {
+				links[i].PublicURL = d.Scheme + "://" + d.Host + "/" + url.PathEscape(links[i].Code)
+				break
+			}
+		}
+	}
+	return links, nil
 }
 
 func (s *LinkService) Get(ctx context.Context, id uint64) (model.Link, error) {
@@ -175,6 +204,12 @@ func (s *LinkService) Get(ctx context.Context, id uint64) (model.Link, error) {
 	err := s.db.WithContext(ctx).First(&link, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return model.Link{}, ErrLinkNotFound
+	}
+	if err == nil {
+		var d model.Domain
+		if s.db.WithContext(ctx).Where("id = ? AND status = ?", link.EntryDomainID, model.StatusActive).First(&d).Error == nil {
+			link.PublicURL = d.Scheme + "://" + d.Host + "/" + url.PathEscape(link.Code)
+		}
 	}
 	return link, err
 }

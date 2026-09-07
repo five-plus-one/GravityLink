@@ -27,6 +27,7 @@ const collapsed = ref(false);
 const nav = [
   { key: 'dashboard', label: '概览', icon: LayoutDashboard, to: '/' },
   { key: 'links', label: '链接', icon: Link2, to: '/links' },
+  { key: 'share-cards', label: '微信分享卡片', icon: Link2, to: '/share-cards' },
   { key: 'domains', label: '域名', icon: Globe2, to: '/domains' },
   { key: 'landing-pages', label: '落地页', icon: LayoutTemplate, to: '/landing-pages' },
   { key: 'stats', label: '统计', icon: BarChart3, to: '/stats' },
@@ -44,7 +45,7 @@ const menuOptions: MenuOption[] = nav.map((item) => ({
 const activeKey = computed(() => (route.name as string) || 'dashboard');
 const pageTitle = computed(() => (route.meta.title as string) || '');
 const pageSubtitle = computed(() => (route.meta.subtitle as string) || '集中管理链接、域名与访问数据');
-const publicEntryUrl = computed(() => window.location.origin);
+const publicEntryUrl = '/links';
 
 const roleLabel = computed(() => {
   const role = auth.user?.role;
@@ -107,7 +108,7 @@ function handleMenuSelect(key: string) {
       <div class="sider-footer">
         <NButton v-if="!collapsed" text tag="a" :href="publicEntryUrl" target="_blank" class="public-link">
           <template #icon><ExternalLink :size="14" /></template>
-          访问公开入口
+          查看访问地址
         </NButton>
 
         <NDropdown :options="userMenuOptions" trigger="click" @select="handleUserMenu">

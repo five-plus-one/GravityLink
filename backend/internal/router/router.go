@@ -63,6 +63,8 @@ func New(deps Dependencies) *gin.Engine {
 	registerConfigRoutes(adminAPI, systemConfigService, deps)
 	registerUserRoutes(adminAPI, deps.DB)
 	registerSystemRoutes(adminAPI, deps)
+	registerContentRoutes(engine, adminAPI, deps, domainCache)
+	registerTargetRoutes(adminAPI, deps)
 
 	registerAssetRoutes(engine)
 	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, publicPageService, accessRecorder)

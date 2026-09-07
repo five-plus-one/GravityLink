@@ -29,11 +29,16 @@ import {
   createLink,
   deleteLink,
   listLinks,
+  listLandingPages,
+  type LandingPageItem,
   updateLink,
   type LinkItem,
 } from '../api';
 import { useDomainStore } from '../stores/domain';
 import { useAuthStore } from '../stores/auth';
+import TargetManager from '../components/TargetManager.vue';
+import MaterialPicker from '../components/MaterialPicker.vue';
+import EntryQRCode from '../components/EntryQRCode.vue';
 
 const route = useRoute();
 const message = useMessage();
@@ -41,6 +46,8 @@ const domains = useDomainStore();
 const auth = useAuthStore();
 
 const items = ref<LinkItem[]>([]);
+const landingPages = ref<LandingPageItem[]>([]);
+const landingPageId = ref<number | null>(null);
 const loading = ref(false);
 const query = ref('');
 const statusFilter = ref<string | null>(null);
@@ -156,15 +163,14 @@ const filtered = computed(() => {
 
 const shortUrlBase = computed(() => {
   const map = new Map<number, string>();
-  domains.items.forEach((d) => map.set(d.ID, `${d.Scheme}://${d.Host}`));
+  domains.entryDomains.filter((d) => d.Status === 'active').forEach((d) => map.set(d.ID, `${d.Scheme}://${d.Host}`));
   return map;
 });
 
 function shortUrlOf(row: LinkItem): string {
-  // 后端 LinkItem 当前未返回 EntryDomainID，退化为使用第一个 entry 域。
-  const firstEntry = domains.entryDomains[0];
-  const base = firstEntry ? `${firstEntry.Scheme}://${firstEntry.Host}` : shortUrlBase.value.get(0) || '';
-  return base ? `${base}/${row.Code}` : row.Code;
+  if (row.PublicURL !== undefined) return row.PublicURL;
+  const base = shortUrlBase.value.get(row.EntryDomainID);
+  return base ? `${base}/${encodeURIComponent(row.Code)}` : '';
 }
 
 const columns: DataTableColumns<LinkItem> = [
@@ -177,11 +183,12 @@ const columns: DataTableColumns<LinkItem> = [
         h('code', {}, row.Code),
         h(
           NButton,
-          { text: true, size: 'tiny', onClick: () => copyShortUrl(row) },
+          { text: true, size: 'tiny', disabled: !shortUrlOf(row), onClick: () => copyShortUrl(row) },
           { icon: () => h(NIcon, { size: 14 }, { default: () => h(Copy) }) },
         ),
       ]),
   },
+  { title: '访问地址', key: 'url', ellipsis: { tooltip: true }, render: (row) => shortUrlOf(row) || '入口域不可用' },
   { title: '名称', key: 'Title', render: (row) => row.Title || h('span', { class: 'muted' }, '未命名') },
   {
     title: '类型',
@@ -211,12 +218,14 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '操作',
     key: 'actions',
-    width: 160,
+    width: 300,
     render: (row) =>
       h('div', { style: 'display:flex;gap:4px' }, [
+        h(EntryQRCode, {url:shortUrlOf(row),name:row.Code}),
+        canWrite.value && row.Type === 'liveqr' ? h(TargetManager, { linkId: row.ID, origin: shortUrlOf(row) ? new URL(shortUrlOf(row)).origin : '' }) : null,
         h(
           NButton,
-          { text: true, size: 'small', tag: 'a', href: shortUrlOf(row), target: '_blank' },
+          { text: true, size: 'small', tag: 'a', disabled: !shortUrlOf(row), href: shortUrlOf(row) || undefined, target: '_blank', rel: 'noopener noreferrer' },
           { icon: () => h(NIcon, { size: 14 }, { default: () => h(ExternalLink) }) },
         ),
         canWrite.value
@@ -250,7 +259,11 @@ const columns: DataTableColumns<LinkItem> = [
 ];
 
 onMounted(async () => {
-  await Promise.all([refresh(), domains.refresh()]);
+  await refresh();
+  if (canWrite.value) {
+    try { await domains.refresh(); landingPages.value = (await listLandingPages()).items; }
+    catch (err) { message.error(messageOf(err)); }
+  }
   if (route.query.create === '1' && canWrite.value) openCreate();
 });
 
@@ -266,13 +279,14 @@ async function refresh() {
 }
 
 function openCreate() {
+  landingPageId.value = null;
   modalMode.value = 'create';
   editingId.value = null;
   Object.assign(form, {
     type: 'short',
     title: '',
     code: '',
-    entryDomainId: domains.entryDomains[0]?.ID ?? null,
+    entryDomainId: null,
     targetUrl: '',
     strategyMode: 'round_robin',
     targets: [{ label: '', url: '', weight: 1, scanLimit: null }],
@@ -312,7 +326,11 @@ async function submit() {
   saving.value = true;
   try {
     if (modalMode.value === 'create') {
+      const page = landingPages.value.find(p => p.ID === landingPageId.value && p.Template === 'liveqr');
+      if (form.type === 'liveqr' && !page) throw new Error('请选择活码落地页；没有可选项时请先创建 liveqr 落地页');
       await createLink({
+        landing_page_id: form.type === 'liveqr' ? page?.ID : undefined,
+        landing_domain_id: form.type === 'liveqr' ? page?.DomainID : undefined,
         type: form.type,
         code: form.code || undefined,
         title: form.title || undefined,
@@ -363,6 +381,10 @@ async function removeLink(row: LinkItem) {
 }
 
 async function copyShortUrl(row: LinkItem) {
+  if (!shortUrlOf(row)) {
+    message.error('入口域不可用，请检查域名配置');
+    return;
+  }
   try {
     await navigator.clipboard.writeText(shortUrlOf(row));
     message.success(`已复制 ${shortUrlOf(row)}`);
@@ -463,10 +485,14 @@ function removeTarget(index: number) {
         </NFormItem>
       </div>
 
+      <NAlert v-if="modalMode === 'create'" type="info" style="margin-bottom:16px">入口域名须指向公开服务。localhost 仅供本机测试；自动测试的 .test 域名没有公共 DNS，不能直接用于对外分享。</NAlert>
       <NFormItem v-if="form.type !== 'liveqr'" label="目标 URL" path="targetUrl">
         <NInput v-model:value="form.targetUrl" placeholder="https://example.com/path" />
       </NFormItem>
-      <template v-else>
+      <template v-else-if="modalMode === 'create'">
+        <NFormItem label="活码落地页（必选）">
+          <NSelect v-model:value="landingPageId" :options="landingPages.filter(p => p.Template === 'liveqr').map(p => ({ label: p.Title, value: p.ID }))" placeholder="先在落地页管理中创建活码页面" />
+        </NFormItem>
         <div class="liveqr-section">
           <div class="section-title">
             <div><strong>分发策略</strong><p class="muted">决定多个二维码目标的展示方式</p></div>
@@ -482,7 +508,7 @@ function removeTarget(index: number) {
             <div v-for="(target, index) in form.targets" :key="index" class="target-row">
               <div class="target-index">{{ index + 1 }}</div>
               <NInput v-model:value="target.label" placeholder="名称（可选）" />
-              <NInput v-model:value="target.url" placeholder="https://example.com/qr.png" />
+              <div><NInput v-model:value="target.url" placeholder="https://example.com/qr.png" /><MaterialPicker :origin="shortUrlBase.get(form.entryDomainId || 0) || ''" @select="target.url=$event" /></div>
               <NInputNumber
                 v-if="form.strategyMode === 'weighted'"
                 v-model:value="target.weight"

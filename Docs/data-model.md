@@ -321,3 +321,9 @@ stat_hourly ─────────────── links (link_id)
 stat_geo    ─────────────── links (link_id)
 stat_device ─────────────── links (link_id)
 ```
+# 2026-09-07 增量扩展
+
+- `materials`：图片路径、名称、创建时间。
+- `share_cards`：域名、标题、摘要、封面、目标 URL、启停、访问计数、创建/更新时间。
+- `wechat_accounts`：公众号 AppID 与加密 AppSecret；密钥位于数据目录独立文件，备份时需一并保存。
+- `routing_targets` 新增 `expire_at`（可空）与 `owner`（128 字符）。启动仅新增缺失列，不删除或重建业务表。回滚应用时保留新增表/列与上传文件，旧版本不读取这些数据。

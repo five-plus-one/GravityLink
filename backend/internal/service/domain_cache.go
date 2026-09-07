@@ -34,7 +34,7 @@ func (c *DomainCache) Load() error {
 
 	next := make(map[string]model.Domain, len(domains))
 	for _, domain := range domains {
-		next[normalizeHost(domain.Host)] = domain
+		next[strings.ToLower(strings.TrimSpace(domain.Host))] = domain
 	}
 
 	c.mu.Lock()
@@ -47,7 +47,10 @@ func (c *DomainCache) Get(host string) (model.Domain, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	domain, ok := c.domains[normalizeHost(host)]
+	domain, ok := c.domains[strings.ToLower(strings.TrimSpace(host))]
+	if !ok {
+		domain, ok = c.domains[normalizeHost(host)]
+	}
 	return domain, ok
 }
 

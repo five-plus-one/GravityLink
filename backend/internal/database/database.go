@@ -47,6 +47,7 @@ func ConnectMySQL(dsn string) (*gorm.DB, error) {
 
 func EnsureSchema(db *gorm.DB) error {
 	models := []any{
+		&model.Material{}, &model.ShareCard{}, &model.WechatAccount{},
 		&model.User{},
 		&model.AuthSession{},
 		&model.InstallationState{},
@@ -70,6 +71,13 @@ func EnsureSchema(db *gorm.DB) error {
 	}
 	if err := db.AutoMigrate(models...); err != nil {
 		return err
+	}
+	for _, name := range []string{"ExpireAt", "Owner"} {
+		if !db.Migrator().HasColumn(&model.RoutingTarget{}, name) {
+			if err := db.Migrator().AddColumn(&model.RoutingTarget{}, name); err != nil {
+				return err
+			}
+		}
 	}
 	if err := db.Exec("CREATE TABLE IF NOT EXISTS access_logs_archive LIKE access_logs").Error; err != nil {
 		return err

@@ -81,7 +81,11 @@ const rules: FormRules = {
       required: true,
       validator: (_rule, value: string) => {
         if (!value) return new Error('请输入域名');
-        if (!/^([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?$/i.test(value.trim())) return new Error('域名格式不正确，例如 go.example.com');
+        try {
+          if (/[\s/?#@\\]/.test(value.trim())) throw new Error();
+          const url = new URL(`http://${value.trim()}`);
+          if (!url.hostname || (!url.hostname.includes('.') && url.hostname !== 'localhost' && !url.hostname.includes(':'))) throw new Error();
+        } catch { return new Error('请输入域名或本机地址，可带端口，例如 localhost:18080'); }
         return true;
       },
       trigger: ['blur', 'input'],

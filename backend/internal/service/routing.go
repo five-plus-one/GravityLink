@@ -99,30 +99,39 @@ func (s *RoutingService) SelectTarget(ctx context.Context, linkID uint64) (model
 		return model.RoutingTarget{}, ErrNoRoutingTarget
 	}
 
-	var selected model.RoutingTarget
-	if strategy.Mode == "weighted" {
-		selected = weightedTarget(targets)
-	} else {
-		selected = targets[0]
+	for len(targets) > 0 {
+		selected := targets[0]
+		if strategy.Mode == "weighted" {
+			selected = weightedTarget(targets)
+		}
+		err := s.incrementScan(ctx, selected)
+		if err == nil {
+			return selected, nil
+		}
+		if !errors.Is(err, ErrNoRoutingTarget) {
+			return model.RoutingTarget{}, err
+		}
+		for i := range targets {
+			if targets[i].ID == selected.ID {
+				targets = append(targets[:i], targets[i+1:]...)
+				break
+			}
+		}
 	}
-	if err := s.incrementScan(ctx, selected); err != nil {
-		return model.RoutingTarget{}, err
-	}
-	return selected, nil
+	return model.RoutingTarget{}, ErrNoRoutingTarget
 }
 
 func (s *RoutingService) filterAvailable(ctx context.Context, targets []model.RoutingTarget) []model.RoutingTarget {
 	available := make([]model.RoutingTarget, 0, len(targets))
 	for _, target := range targets {
+		if target.ExpireAt != nil && !target.ExpireAt.After(time.Now()) {
+			continue
+		}
 		if target.ScanLimit == nil {
 			available = append(available, target)
 			continue
 		}
-		count, err := s.redis.Get(ctx, routingScanKey(target.ID)).Uint64()
-		if errors.Is(err, redis.Nil) {
-			count = uint64(target.ScanCount)
-		}
-		if count < uint64(*target.ScanLimit) {
+		if target.ScanCount < *target.ScanLimit {
 			available = append(available, target)
 		}
 	}
@@ -130,18 +139,14 @@ func (s *RoutingService) filterAvailable(ctx context.Context, targets []model.Ro
 }
 
 func (s *RoutingService) incrementScan(ctx context.Context, target model.RoutingTarget) error {
-	count, err := s.redis.Incr(ctx, routingScanKey(target.ID)).Uint64()
-	if err != nil {
-		return err
+	result := s.db.WithContext(ctx).Model(&model.RoutingTarget{}).Where("id = ? AND status = ? AND (expire_at IS NULL OR expire_at > ?) AND (scan_limit IS NULL OR scan_count < scan_limit)", target.ID, model.StatusActive, time.Now()).UpdateColumn("scan_count", gorm.Expr("scan_count + 1"))
+	if result.Error != nil {
+		return result.Error
 	}
-	if target.ScanLimit != nil && count > uint64(*target.ScanLimit) {
-		_ = s.db.WithContext(ctx).Model(&target).Updates(map[string]interface{}{
-			"status":     "exhausted",
-			"scan_count": count,
-		}).Error
+	if result.RowsAffected == 0 {
 		return ErrNoRoutingTarget
 	}
-	return s.db.WithContext(ctx).Model(&target).Update("scan_count", count).Error
+	return nil
 }
 
 func weightedTarget(targets []model.RoutingTarget) model.RoutingTarget {

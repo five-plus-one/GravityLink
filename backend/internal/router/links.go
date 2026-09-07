@@ -103,6 +103,8 @@ func writeServiceError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, 4002, "invalid target url")
 	case errors.Is(err, service.ErrUnsupportedLink):
 		response.Error(c, http.StatusBadRequest, 4003, "unsupported link type")
+	case errors.Is(err, service.ErrTargetUnavailable), errors.Is(err, service.ErrNoRoutingTarget):
+		response.Error(c, http.StatusBadRequest, 4002, "请检查入口域名、落地页和二维码目标配置")
 	default:
 		response.Error(c, http.StatusInternalServerError, 5000, "internal server error")
 	}
