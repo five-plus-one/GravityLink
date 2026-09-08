@@ -77,6 +77,7 @@ const form = reactive({
   code: '',
   entryDomainId: null as number | null,
   targetUrl: '',
+  accessRule: 'none' as 'none' | 'wechat' | 'ios' | 'android' | 'mobile' | 'pc',
   strategyMode: 'round_robin' as 'round_robin' | 'weighted',
   targets: [{ label: '', url: '', weight: 1, scanLimit: null as number | null }],
   expireAt: null as number | null,
@@ -86,6 +87,15 @@ const form = reactive({
 const statusOptions = [
   { label: '正常', value: 'active' },
   { label: '已停用', value: 'disabled' },
+];
+
+const accessRuleOptions = [
+  { label: '不限制', value: 'none' },
+  { label: '仅微信内', value: 'wechat' },
+  { label: '仅 iOS', value: 'ios' },
+  { label: '仅 Android', value: 'android' },
+  { label: '仅手机', value: 'mobile' },
+  { label: '仅电脑', value: 'pc' },
 ];
 
 const typeOptions = [
@@ -372,6 +382,7 @@ async function submit() {
         title: form.title || undefined,
         entry_domain_id: form.entryDomainId!,
         target_url: form.type === 'liveqr' ? '' : form.targetUrl,
+        access_rule: form.accessRule !== 'none' ? form.accessRule : undefined,
         expire_at: form.expireAt ? new Date(form.expireAt).toISOString() : undefined,
         strategy:
           form.type === 'liveqr'
@@ -597,6 +608,10 @@ function removeTarget(index: number) {
           </div>
         </NFormItem>
       </template>
+
+      <NFormItem label="访问限制">
+        <NSelect v-model:value="form.accessRule" :options="accessRuleOptions" style="width: 100%" />
+      </NFormItem>
 
       <NFormItem label="过期时间（可选）">
         <NDatePicker v-model:value="form.expireAt" type="datetime" clearable style="width: 100%" />

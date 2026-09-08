@@ -69,7 +69,16 @@ func New(deps Dependencies) *gin.Engine {
 	registerUserRoutes(adminAPI, deps.DB)
 	registerSystemRoutes(adminAPI, deps)
 	registerContentRoutes(engine, adminAPI, deps, domainCache)
+	apiKeyService := service.NewAPIKeyService(deps.DB, deps.Redis)
 	registerTargetRoutes(adminAPI, deps)
+	kamiService := service.NewKamiService(deps.DB)
+	registerAPIKeyRoutes(adminAPI, apiKeyService)
+	registerKamiRoutes(adminAPI, kamiService)
+
+	// 公开 API（/api/v1/open）：独立 Bearer token 鉴权，不依赖 session
+	openAPI := api.Group("/open")
+	registerOpenAPIRoutes(openAPI, apiKeyService, linkService, deps.DB)
+	registerKamiPublicRoutes(api, kamiService) // /api/v1/kami/:id/issue
 
 	registerAssetRoutes(engine)
 	registerPublicRoutes(engine, deps, domainCache, linkService, landingService, publicPageService, accessRecorder)

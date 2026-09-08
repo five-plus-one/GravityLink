@@ -29,6 +29,7 @@ export interface CreateLinkPayload {
   entry_domain_id: number;
   target_url: string;
   title?: string;
+  access_rule?: 'none' | 'wechat' | 'ios' | 'android' | 'mobile' | 'pc';
   expire_at?: string | null;
   channel?: {
     utm_source?: string;

@@ -47,6 +47,7 @@ type CreateLinkInput struct {
 	TargetURL       string         `json:"target_url"`
 	LandingPageID   *uint64        `json:"landing_page_id"`
 	Title           string         `json:"title"`
+	AccessRule      string         `json:"access_rule"`
 	ExpireAt        *time.Time     `json:"expire_at"`
 	CreatedBy       uint64         `json:"-"`
 	Channel         *ChannelInput  `json:"channel"`
@@ -122,6 +123,11 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		targetURLPtr = &targetURL
 	}
 
+	accessRule := input.AccessRule
+	if accessRule != "wechat" && accessRule != "ios" && accessRule != "android" && accessRule != "mobile" && accessRule != "pc" {
+		accessRule = "none"
+	}
+
 	link := model.Link{
 		Code:            input.Code,
 		Type:            linkType,
@@ -131,6 +137,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		TargetURL:       targetURLPtr,
 		LandingPageID:   input.LandingPageID,
 		Title:           title,
+		AccessRule:      accessRule,
 		ExpireAt:        input.ExpireAt,
 		Status:          model.LinkStatusActive,
 		CreatedBy:       input.CreatedBy,
