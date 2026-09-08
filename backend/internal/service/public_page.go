@@ -58,6 +58,18 @@ func (s *PublicPageService) Gone(ctx context.Context) (string, int) {
 	return s.render(view, http.StatusGone), http.StatusGone
 }
 
+// AccessDenied 返回访问受限提示页（UA 访问限制不满足时）。
+// 403 状态码；Message 告知使用何种方式打开，例如「请用微信客户端打开此链接」。
+func (s *PublicPageService) AccessDenied(ctx context.Context, message string) (string, int) {
+	view := s.view(ctx, "access_denied", PublicPageView{
+		SiteName: "GravityLink",
+		Title:    "访问受限",
+		Message:  message,
+		Footer:   "GravityLink",
+	})
+	return s.render(view, http.StatusForbidden), http.StatusForbidden
+}
+
 func (s *PublicPageService) view(ctx context.Context, page string, fallback PublicPageView) PublicPageView {
 	values := s.configs(ctx)
 	return PublicPageView{

@@ -53,6 +53,11 @@ func EnsureSchema(db *gorm.DB) error {
 		&model.InstallationState{},
 		&model.AuditLog{},
 		&model.SystemConfig{},
+		// P2 新表：始终 AutoMigrate（API 密钥 + 卡密系统）
+		&model.ApiKey{},
+		&model.KamiProject{},
+		&model.KamiItem{},
+		&model.KamiIssuance{},
 	}
 	if !db.Migrator().HasTable(&model.Link{}) {
 		models = append(models,
@@ -72,13 +77,31 @@ func EnsureSchema(db *gorm.DB) error {
 	if err := db.AutoMigrate(models...); err != nil {
 		return err
 	}
-	for _, name := range []string{"ExpireAt", "Owner"} {
+	for _, name := range []string{"ExpireAt", "Owner", "WxRemark"} {
 		if !db.Migrator().HasColumn(&model.RoutingTarget{}, name) {
 			if err := db.Migrator().AddColumn(&model.RoutingTarget{}, name); err != nil {
 				return err
 			}
 		}
 	}
+	// P1 已有表新列：Link（UA 访问限制+客服在线时段）、AccessLog（来源 APP）
+	for _, col := range []struct {
+		Model interface{}
+		Name  string
+	}{
+		{&model.Link{}, "AccessRule"},
+		{&model.Link{}, "OnlineSchedule"},
+		{&model.AccessLog{}, "SourceApp"},
+	} {
+		if !db.Migrator().HasColumn(col.Model, col.Name) {
+			if err := db.Migrator().AddColumn(col.Model, col.Name); err != nil {
+				return err
+			}
+		}
+	}
+	// LandingPage.Template enum 扩展（kf/kami 新模板类型，已有库需 ALTER 扩展）
+	db.Exec("ALTER TABLE landing_pages MODIFY COLUMN template ENUM('liveqr','redirect_notice','custom','kf','kami') NOT NULL DEFAULT 'liveqr'")
+
 	if err := db.Exec("CREATE TABLE IF NOT EXISTS access_logs_archive LIKE access_logs").Error; err != nil {
 		return err
 	}

@@ -45,6 +45,7 @@ type AccessEvent struct {
 	Province   string    `json:"province,omitempty"`
 	City       string    `json:"city,omitempty"`
 	ISP        string    `json:"isp,omitempty"`
+	SourceApp  string    `json:"source_app,omitempty"` // P1：来源 APP 识别（微信/抖音等）
 }
 
 func NewAccessRecorder(redis *redis.Client, geo GeoResolver) *AccessRecorder {
@@ -77,6 +78,9 @@ func (r *AccessRecorder) RecordAsync(event AccessEvent) {
 		if geoInfo.Country != "" || geoInfo.Province != "" {
 			_ = r.redis.HIncrBy(ctx, GeoStatKey(event.LinkID, day), geoInfo.Country+GeoFieldSep+geoInfo.Province, 1).Err()
 		}
+
+		// P1：来源 APP 识别（随 payload 入队，consumer 写入 access_logs.source_app）
+		event.SourceApp = ParseSourceApp(event.UserAgent, event.Referer)
 
 		payload, err := json.Marshal(event)
 		if err != nil {

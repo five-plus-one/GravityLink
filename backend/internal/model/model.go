@@ -101,7 +101,11 @@ type Link struct {
 	LandingPageID   *uint64
 	Title           *string `gorm:"size:255"`
 	ExpireAt        *time.Time
-	Status          string         `gorm:"type:enum('active','disabled','expired');not null;default:active"`
+	// P1：UA 访问限制（none=不限，wechat=仅微信内，ios/android/mobile/pc=对应设备）
+	AccessRule string `gorm:"type:enum('none','wechat','ios','android','mobile','pc');not null;default:none"`
+	// P2：客服码在线时段 JSON（每周 7 天 x 3 时段，仅 kf 模板使用）
+	OnlineSchedule *string `gorm:"type:json"`
+	Status         string  `gorm:"type:enum('active','disabled','expired');not null;default:active"`
 	CreatedBy       uint64         `gorm:"not null;index:idx_created_by"`
 	CreatedAt       time.Time      `gorm:"not null"`
 	UpdatedAt       time.Time      `gorm:"not null"`
@@ -133,13 +137,14 @@ type AccessLog struct {
 	OS         *string   `gorm:"size:64"`
 	Browser    *string   `gorm:"size:64"`
 	Referer    *string   `gorm:"size:2048"`
+	SourceApp  *string   `gorm:"size:64"` // P1：来源 APP 识别（微信/抖音/小红书等）
 	ViaTransit bool      `gorm:"not null;default:false"`
 	CreatedAt  time.Time `gorm:"not null"`
 }
 
 type LandingPage struct {
 	ID        uint64          `gorm:"primaryKey;autoIncrement"`
-	Template  string          `gorm:"type:enum('liveqr','redirect_notice','custom');not null"`
+	Template  string          `gorm:"type:enum('liveqr','redirect_notice','custom','kf','kami');not null"`
 	Title     string          `gorm:"size:255;not null"`
 	Content   json.RawMessage `gorm:"type:json;not null"`
 	DomainID  uint64          `gorm:"not null;index:idx_domain_id"`
@@ -159,8 +164,9 @@ type RoutingStrategy struct {
 
 type RoutingTarget struct {
 	ExpireAt     *time.Time
-	Owner        string    `gorm:"size:128"`
-	ID           uint64    `gorm:"primaryKey;autoIncrement"`
+	Owner        string  `gorm:"size:128"`
+	WxRemark     *string `gorm:"size:128"` // P2：客服微信号/备注（kf 模板展示页复制按钮用）
+	ID           uint64  `gorm:"primaryKey;autoIncrement"`
 	StrategyID   uint64    `gorm:"not null;index:idx_strategy_id"`
 	Label        *string   `gorm:"size:128"`
 	TargetURL    string    `gorm:"type:text;not null"`
@@ -228,4 +234,62 @@ type SystemConfig struct {
 	Value       string    `gorm:"type:text;not null"`
 	Description *string   `gorm:"size:255"`
 	UpdatedAt   time.Time `gorm:"not null"`
+}
+
+// ---- P2: Open API keys ----
+
+type ApiKey struct {
+	ID           uint64     `gorm:"primaryKey;autoIncrement"`
+	Name         string     `gorm:"size:64;not null;uniqueIndex:uk_name_user"`
+	TokenHash    string     `gorm:"size:64;not null;uniqueIndex:uk_token_hash"`
+	HmacSecret   *string    `gorm:"size:64"` // 创建时明文返回，之后存 hash
+	SignEnabled  bool       `gorm:"not null;default:false"`
+	Quota        *uint      `gorm:"column:quota"`
+	Used         uint       `gorm:"not null;default:0"`
+	ExpireAt     *time.Time
+	IPWhitelist  *string    `gorm:"type:text"` // 逗号分隔多 IP/CIDR
+	LastUsedAt   *time.Time
+	Status       string     `gorm:"type:enum('active','disabled');not null;default:active"`
+	CreatedBy    uint64     `gorm:"not null;index:idx_apikey_creator"`
+	CreatedAt    time.Time  `gorm:"not null"`
+}
+
+// ---- P2: 卡密分发 ----
+
+type KamiProject struct {
+	ID               uint64         `gorm:"primaryKey;autoIncrement"`
+	Title            string         `gorm:"size:128;not null"`
+	Type             string         `gorm:"size:32;not null;default:'卡密'"` // 19种文案类型，用字符串不硬性枚举
+	Password         *string        `gorm:"size:128"`                        // 提取口令（可选）
+	RepeatPolicy     string         `gorm:"type:enum('never','allow');not null;default:'never'"`
+	RepeatIntervalSec uint          `gorm:"not null;default:0"`              // 重复提取间隔（秒）
+	Status           string         `gorm:"type:enum('active','disabled');not null;default:active"`
+	CreatedBy        uint64         `gorm:"not null;index:idx_kami_creator"`
+	CreatedAt        time.Time      `gorm:"not null"`
+	UpdatedAt        time.Time      `gorm:"not null"`
+	DeletedAt        gorm.DeletedAt `gorm:"index"`
+}
+
+type KamiItem struct {
+	ID          uint64 `gorm:"primaryKey;autoIncrement"`
+	ProjectID   uint64 `gorm:"not null;index:idx_km_project"`
+	Content     string `gorm:"type:text;not null"`
+	Note        *string `gorm:"size:255"`
+	ExpiresText *string `gorm:"size:128"` // 有效期说明文案
+	Status      string  `gorm:"type:enum('unissued','issued');not null;default:'unissued'"`
+	IssuedAt    *time.Time
+	IssuedIP    *string `gorm:"size:45"`
+	CreatedAt   time.Time `gorm:"not null"`
+}
+
+func (KamiItem) TableName() string { return "kami_items" }
+
+type KamiIssuance struct {
+	ID            uint64    `gorm:"primaryKey;autoIncrement"`
+	ProjectID     uint64    `gorm:"not null;index:idx_kami_iss_project"`
+	KamiItemID    uint64    `gorm:"not null;index:idx_kami_iss_item"`
+	VisitorIP     *string   `gorm:"size:45"`
+	VisitorUA     *string   `gorm:"size:512"`
+	VisitorDevice *string   `gorm:"size:32"`
+	CreatedAt     time.Time `gorm:"not null"`
 }

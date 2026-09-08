@@ -24,6 +24,7 @@ type CachedLink struct {
 	Type            string
 	TargetURL       string
 	Status          string
+	AccessRule      string  // none/wechat/ios/android/mobile/pc
 	ExpireAt        *time.Time
 	LandingPageID   *uint64
 	TransitDomainID *uint64
@@ -53,6 +54,7 @@ func (c *LinkCache) Get(ctx context.Context, code string) (CachedLink, error) {
 		Type:        values["type"],
 		TargetURL:   values["target_url"],
 		Status:      values["status"],
+		AccessRule:  values["access_rule"],
 		UTMSource:   values["utm_source"],
 		UTMMedium:   values["utm_medium"],
 		UTMCampaign: values["utm_campaign"],
@@ -88,6 +90,7 @@ func (c *LinkCache) Set(ctx context.Context, link CachedLink) error {
 		"type":              link.Type,
 		"target_url":        link.TargetURL,
 		"status":            link.Status,
+		"access_rule":       link.AccessRule,
 		"expire_at_unix":    optionalTimeUnix(link.ExpireAt),
 		"landing_page_id":   optionalUint(link.LandingPageID),
 		"transit_domain_id": optionalUint(link.TransitDomainID),

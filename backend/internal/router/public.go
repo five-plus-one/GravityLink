@@ -57,6 +57,12 @@ func dispatchByDomainType(deps Dependencies, links *service.LinkService, landing
 				writeResolveError(c, err, pages)
 				return
 			}
+			// P1：UA 访问限制检查（none 时放行；不满足时返回 403 引导页）
+			if allowed, hint := service.CheckAccessRule(c.Request.UserAgent(), result.Link.AccessRule); !allowed {
+				html, status := pages.AccessDenied(c.Request.Context(), hint)
+				c.Data(status, "text/html; charset=utf-8", []byte(html))
+				return
+			}
 			// 活码只由落地域渲染时记一次访问日志（此处 302 若也记则 PV 双计）。
 			if result.Link.Type != model.LinkTypeLiveQR {
 				recorder.RecordAsync(service.AccessEvent{
