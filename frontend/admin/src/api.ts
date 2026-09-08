@@ -222,20 +222,24 @@ export async function getSummaryStats(linkId: number): Promise<SummaryStats> {
   return request<SummaryStats>(`/api/v1/stats/${linkId}/summary`);
 }
 
-export async function getDailyStats(linkId: number): Promise<DailyPoint[]> {
-  return request<DailyPoint[]>(`/api/v1/stats/${linkId}/daily`);
+export async function getDailyStats(linkId: number, query = ''): Promise<DailyPoint[]> {
+  return request<DailyPoint[]>(`/api/v1/stats/${linkId}/daily${query}`);
 }
 
 export async function getHourlyStats(linkId: number): Promise<HourlyPoint[]> {
   return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly`);
 }
 
-export async function getGeoStats(linkId: number): Promise<LabelValue[]> {
-  return request<LabelValue[]>(`/api/v1/stats/${linkId}/geo`);
+export async function getGeoStats(linkId: number, query = ''): Promise<LabelValue[]> {
+  return request<LabelValue[]>(`/api/v1/stats/${linkId}/geo${query}`);
 }
 
-export async function getDeviceStats(linkId: number): Promise<DeviceStats> {
-  return request<DeviceStats>(`/api/v1/stats/${linkId}/device`);
+export async function getDeviceStats(linkId: number, query = ''): Promise<DeviceStats> {
+  return request<DeviceStats>(`/api/v1/stats/${linkId}/device${query}`);
+}
+
+export async function resetLinkStats(linkId: number): Promise<void> {
+  await request<{ reset: boolean }>(`/api/v1/stats/${linkId}/reset`, { method: 'POST' });
 }
 
 export async function getSystemConfigs(): Promise<ConfigListData> {

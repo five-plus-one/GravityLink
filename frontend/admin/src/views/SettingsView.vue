@@ -13,6 +13,7 @@ import {
   NInput,
   NModal,
   NSkeleton,
+  NSwitch,
   NTabPane,
   NTabs,
   useMessage,
@@ -43,7 +44,12 @@ const form = reactive({
   goneTitle: '链接已过期',
   goneMessage: '该链接已超过有效期，无法继续访问。',
   footer: 'GravityLink',
+  // 通知与检测
+  notifyWebhookUrl: '',
+  notifyHttpUrl: '',
+  domainCheckEnabled: false,
 });
+const notifySaving = ref(false);
 
 const authModeLabel = computed(() => {
   const source = auth.user?.auth_source;
@@ -68,6 +74,9 @@ onMounted(async () => {
     form.goneTitle = data.configs['public.gone.title'] || form.goneTitle;
     form.goneMessage = data.configs['public.gone.message'] || form.goneMessage;
     form.footer = data.configs['public.footer'] || form.footer;
+    form.notifyWebhookUrl = data.configs['notify_webhook_url'] || '';
+    form.notifyHttpUrl = data.configs['notify_http_url'] || '';
+    form.domainCheckEnabled = data.configs['domain_check_enabled'] === '1';
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载配置失败');
   } finally {
@@ -93,6 +102,22 @@ async function save() {
     message.error(err instanceof Error ? err.message : '保存失败');
   } finally {
     saving.value = false;
+  }
+}
+
+async function saveNotify() {
+  notifySaving.value = true;
+  try {
+    await updateSystemConfigs({
+      notify_webhook_url: form.notifyWebhookUrl.trim(),
+      notify_http_url: form.notifyHttpUrl.trim(),
+      domain_check_enabled: form.domainCheckEnabled ? '1' : '0',
+    });
+    message.success('通知与检测配置已更新，立即生效');
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '保存失败');
+  } finally {
+    notifySaving.value = false;
   }
 }
 
@@ -164,6 +189,32 @@ async function executeReset() {
           <NDescriptionsItem label="Issuer">{{ authInfo?.issuer || '不适用' }}</NDescriptionsItem>
           <NDescriptionsItem label="Audience">{{ authInfo?.audience || '不适用' }}</NDescriptionsItem>
         </NDescriptions>
+      </section>
+          </NTabPane>
+
+          <NTabPane name="notify" tab="通知与检测">
+      <section class="settings-section">
+        <div class="section-head">
+          <div><strong>通知渠道</strong><p class="muted">活码二维码耗尽、域名被封等事件会自动推送；两个渠道都留空则不通知</p></div>
+          <NButton type="primary" :loading="notifySaving" @click="saveNotify">
+            <template #icon><Save :size="16" /></template>
+            保存配置
+          </NButton>
+        </div>
+        <NForm label-placement="top">
+          <NFormItem label="企业微信机器人 Webhook">
+            <NInput v-model:value="form.notifyWebhookUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" />
+          </NFormItem>
+          <NFormItem label="自定义通知接口">
+            <NInput v-model:value="form.notifyHttpUrl" placeholder="POST JSON {title, content, time}；兼容 Bark/Server酱 等自建转发" />
+          </NFormItem>
+          <NFormItem label="域名封禁检测">
+            <div class="check-row">
+              <NSwitch v-model:value="form.domainCheckEnabled" />
+              <span class="muted">每小时借微信官方桥接接口检测全部活跃域名，发现被微信封禁立即通知（默认关闭）</span>
+            </div>
+          </NFormItem>
+        </NForm>
       </section>
           </NTabPane>
 
@@ -241,6 +292,13 @@ async function executeReset() {
   margin-bottom: var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border);
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
 }
 
 .section-head strong { font-size: var(--font-size-lg); }

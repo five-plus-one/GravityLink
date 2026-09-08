@@ -4,8 +4,8 @@ import { useRoute } from 'vue-router';
 // 统一由 echarts.ts 注册图表组件（含饼图），模块加载即完成注册
 import '../echarts';
 import VChart from 'vue-echarts';
-import { BarChart3, RefreshCw } from '@lucide/vue';
-import { NButton, NCard, NEmpty, NGrid, NGridItem, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
+import { BarChart3, RefreshCw, RotateCcw } from '@lucide/vue';
+import { NButton, NCard, NDatePicker, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
 import {
   getDailyStats,
   getDeviceStats,
@@ -13,6 +13,7 @@ import {
   getHourlyStats,
   getSummaryStats,
   listLinks,
+  resetLinkStats,
   type DailyPoint,
   type DeviceStats,
   type HourlyPoint,
@@ -20,9 +21,11 @@ import {
   type LinkItem,
   type SummaryStats,
 } from '../api';
+import { useAuthStore } from '../stores/auth';
 
 const message = useMessage();
 const route = useRoute();
+const auth = useAuthStore();
 
 const links = ref<LinkItem[]>([]);
 const selectedLinkId = ref<number | null>(null);
@@ -178,22 +181,58 @@ watch(selectedLinkId, async (id) => {
   await load();
 });
 
+// P1：统计日期范围（趋势图与分布图适用；最长 90 天由后端兜底）
+const dateRange = ref<[number, number] | null>(null);
+watch(dateRange, () => {
+  if (selectedLinkId.value !== null) load();
+});
+
+function rangeQuery(): { start?: string; end?: string } {
+  if (!dateRange.value) return {};
+  const fmt = (n: number) => new Date(n).toISOString().slice(0, 10);
+  return { start: fmt(dateRange.value[0]), end: fmt(dateRange.value[1]) };
+}
+
 async function load() {
   if (selectedLinkId.value === null) return;
   loading.value = true;
   try {
     const id = selectedLinkId.value;
-    [summary.value, daily.value, hourly.value, deviceStats.value, geo.value] = await Promise.all([
+    const range = rangeQuery();
+    const rangeParams = new URLSearchParams(Object.entries(range).filter(([, v]) => v)).toString();
+    const suffix = rangeParams ? `?${rangeParams}` : '';
+    const [s, d, h, dev, g] = await Promise.all([
       getSummaryStats(id),
-      getDailyStats(id),
+      getDailyStats(id, suffix),
       getHourlyStats(id),
-      getDeviceStats(id),
-      getGeoStats(id),
+      getDeviceStats(id, suffix),
+      getGeoStats(id, suffix),
     ]);
+    summary.value = s;
+    daily.value = d;
+    hourly.value = h;
+    deviceStats.value = dev;
+    geo.value = g;
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载统计失败');
   } finally {
     loading.value = false;
+  }
+}
+
+// P1：重置该链接统计（管理员）
+const resetting = ref(false);
+async function doReset() {
+  if (selectedLinkId.value === null || resetting.value) return;
+  resetting.value = true;
+  try {
+    await resetLinkStats(selectedLinkId.value);
+    message.success('统计已重置（访问日志保留）');
+    await load();
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '重置失败');
+  } finally {
+    resetting.value = false;
   }
 }
 </script>
@@ -215,9 +254,27 @@ async function load() {
               filterable
               style="width: 280px"
             />
+            <NDatePicker
+              v-model:value="dateRange"
+              type="daterange"
+              clearable
+              :is-date-disabled="(ts: number) => ts > Date.now()"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="width: 260px"
+            />
             <NButton :loading="loading" :disabled="selectedLinkId === null" @click="load">
               <template #icon><RefreshCw :size="16" /></template>
             </NButton>
+            <NPopconfirm v-if="auth.isSuperAdmin || auth.user?.role === 'admin'" @positive-click="doReset">
+              <template #trigger>
+                <NButton type="error" ghost :loading="resetting" title="清空 Redis 计数与聚合表，原始访问日志保留">
+                  <template #icon><RotateCcw :size="16" /></template>
+                  重置统计
+                </NButton>
+              </template>
+              确认重置该链接的全部统计数据？此操作不可恢复（访问日志保留，仅统计口径归零）。
+            </NPopconfirm>
           </div>
         </div>
       </template>
