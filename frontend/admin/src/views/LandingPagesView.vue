@@ -20,7 +20,7 @@ import {
   type FormInst,
   type FormRules,
 } from 'naive-ui';
-import { createLandingPage, listLandingPages, type LandingPageItem } from '../api';
+import { request, createLandingPage, listLandingPages, type LandingPageItem } from '../api';
 import { useAuthStore } from '../stores/auth';
 import { useDomainStore } from '../stores/domain';
 
@@ -31,6 +31,9 @@ const domains = useDomainStore();
 const items = ref<LandingPageItem[]>([]);
 const loading = ref(false);
 const showModal = ref(false);
+const editing=ref<LandingPageItem|null>(null),preview=ref(''),previewShow=ref(false);
+async function showPreview(row:LandingPageItem){try{preview.value=(await request<{html:string}>(`/api/v1/landing-pages/${row.ID}/preview`)).html;previewShow.value=true;}catch(e){message.error(String(e));}}
+function openEdit(row:LandingPageItem){const c=row.Content||{};editing.value=row;Object.assign(form,{title:row.Title,domainId:row.DomainID,headline:String(c.headline||row.Title),subtext:String(c.subtext||''),footer:String(c.footer_text||''),color:String(c.theme_color||'#0f766e')});modalError.value='';showModal.value=true;}
 const saving = ref(false);
 const modalError = ref('');
 const formRef = ref<FormInst | null>(null);
@@ -88,20 +91,7 @@ const columns: DataTableColumns<LandingPageItem> = [
     key: 'actions',
     width: 100,
     render: (row) => {
-      const domain = domains.items.find((d) => d.ID === row.DomainID);
-      if (!domain) return h('span', { class: 'muted' }, '—');
-      return h(
-        NButton,
-        {
-          text: true,
-          size: 'small',
-          tag: 'a',
-          href: `${domain.Scheme}://${domain.Host}/`,
-          target: '_blank',
-          title: '访问落地页域名',
-        },
-        { icon: () => h(NIcon, { size: 14 }, { default: () => h(ExternalLink) }) },
-      );
+      return h('div',{style:'display:flex;gap:12px'},[h(NButton,{text:true,onClick:()=>showPreview(row)},()=> '布局预览'),canWrite.value&&row.Template==='liveqr'?h(NButton,{text:true,onClick:()=>openEdit(row)},()=> '编辑'):null]);
     },
   },
 ];
@@ -122,6 +112,7 @@ async function refresh() {
 }
 
 function openCreate() {
+  editing.value=null;
   Object.assign(form, {
     title: '',
     domainId: domains.landingDomains[0]?.ID ?? null,
@@ -135,6 +126,7 @@ function openCreate() {
 }
 
 async function submit() {
+  if(saving.value)return;
   modalError.value = '';
   try {
     await formRef.value?.validate();
@@ -143,18 +135,20 @@ async function submit() {
   }
   saving.value = true;
   try {
-    await createLandingPage({
-      template: 'liveqr',
+    const payload = {
+      template: 'liveqr' as const,
       title: form.title,
       domain_id: form.domainId!,
       content: {
+        ...(editing.value?.Content||{}),
         headline: form.headline,
         subtext: form.subtext,
         footer_text: form.footer,
         theme_color: form.color,
       },
-    });
-    message.success('落地页已创建');
+    };
+    if(editing.value) await request(`/api/v1/landing-pages/${editing.value.ID}`,{method:'PUT',body:JSON.stringify(payload)});else await createLandingPage(payload);
+    message.success(editing.value?'落地页已更新':'落地页已创建');
     showModal.value = false;
     await refresh();
   } catch (err) {
@@ -205,14 +199,15 @@ function messageOf(err: unknown): string {
     </NDataTable>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" title="创建落地页" style="width: 620px" :mask-closable="false">
+  <NModal v-model:show="previewShow" preset="card" title="布局预览" style="width:min(700px,94vw)"><NAlert>仅预览布局，不分配群二维码，不产生访问统计；实际内容请通过活码入口查看。</NAlert><iframe title="落地页布局预览" sandbox="" :srcdoc="preview" style="width:100%;height:520px;border:0"/></NModal>
+  <NModal v-model:show="showModal" preset="card" :title="editing?'编辑落地页':'创建落地页'" style="width:min(620px,94vw)" :mask-closable="false" :closable="!saving" :close-on-esc="!saving">
     <NForm ref="formRef" :model="form" :rules="rules" label-placement="top">
       <div class="form-row">
         <NFormItem label="名称" path="title">
           <NInput v-model:value="form.title" placeholder="便于管理端识别" />
         </NFormItem>
         <NFormItem label="落地域名" path="domainId">
-          <NSelect v-model:value="form.domainId" :options="landingDomainOptions" placeholder="选择落地域名" :loading="domains.loading" />
+          <NSelect :disabled="!!editing" v-model:value="form.domainId" :options="landingDomainOptions" placeholder="选择落地域名" :loading="domains.loading" />
         </NFormItem>
       </div>
       <NFormItem label="主标题" path="headline">
@@ -234,8 +229,8 @@ function messageOf(err: unknown): string {
 
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: var(--space-2)">
-        <NButton @click="showModal = false">取消</NButton>
-        <NButton type="primary" :loading="saving" @click="submit">创建</NButton>
+        <NButton :disabled="saving" @click="showModal = false">取消</NButton>
+        <NButton type="primary" :loading="saving" @click="submit">{{editing?'保存修改':'创建'}}</NButton>
       </div>
     </template>
   </NModal>

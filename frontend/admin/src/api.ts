@@ -79,6 +79,7 @@ export interface CreateDomainPayload {
 }
 
 export interface LandingPageItem {
+  Content?: Record<string,unknown>;
   ID: number;
   Template: 'liveqr' | 'redirect_notice' | 'custom';
   Title: string;

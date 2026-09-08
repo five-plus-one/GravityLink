@@ -39,6 +39,7 @@ import { useAuthStore } from '../stores/auth';
 import TargetManager from '../components/TargetManager.vue';
 import MaterialPicker from '../components/MaterialPicker.vue';
 import EntryQRCode from '../components/EntryQRCode.vue';
+import BatchAdd from '../components/BatchAdd.vue';
 
 const route = useRoute();
 const message = useMessage();
@@ -417,6 +418,7 @@ function removeTarget(index: number) {
           <p class="muted">{{ items.length }} 条记录，{{ items.filter((i) => i.Status === 'active').length }} 条可访问</p>
         </div>
         <div class="card-actions">
+          <BatchAdd v-if="canWrite" :domains="domains.items" @saved="refresh"/>
           <NInput v-model:value="query" placeholder="搜索短码、名称或目标" clearable style="width: 260px">
             <template #prefix><Search :size="14" /></template>
           </NInput>

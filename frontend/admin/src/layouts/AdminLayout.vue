@@ -141,9 +141,9 @@ function handleMenuSelect(key: string) {
           <p>{{ pageSubtitle }}</p>
         </div>
         <RouterView v-slot="{ Component }">
-          <Transition name="page" mode="out-in">
+          <div :key="route.path" class="route-content">
             <component :is="Component" />
-          </Transition>
+          </div>
         </RouterView>
       </main>
     </NLayout>

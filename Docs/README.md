@@ -1,5 +1,7 @@
 # GravityLink 文档索引
 
+功能完成度请以 [2026-09-07 旧版对照审计](legacy-comparison-2026-09-07.md) 为准。下表“完成”表示规格文档编写状态，不代表每项业务已通过验收。
+
 ## 核心设计文档
 
 | 文档 | 说明 | 状态 |
@@ -37,4 +39,4 @@
 - **Phase 4**：开源收尾（迁移工具、docker-compose、README）
 - **Phase 5**：UI/UX 全量重构（Naive UI + Pinia、路由化、设计令牌）
 
-当前阶段：**Phase 5 已完成**，见 [workspace/status.md](../workspace/status.md)
+当前阶段：**Phase 5 界面重构后，正在补齐业务闭环与旧版迁移差距**，见 [workspace/status.md](../workspace/status.md)。

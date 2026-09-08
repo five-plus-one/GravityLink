@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,6 +14,36 @@ import (
 )
 
 func registerLandingRoutes(group *gin.RouterGroup, landings *service.LandingService, cfg config.Config) {
+	group.GET("/landing-pages/:id/preview", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		html, err := landings.Preview(c.Request.Context(), id)
+		if err != nil {
+			writeLandingError(c, err)
+			return
+		}
+		html = strings.ReplaceAll(html, `<script src="/assets/landing/gravitylink-landing.js"></script>`, "")
+		response.OK(c, gin.H{"html": html})
+	})
+	group.PUT("/landing-pages/:id", middleware.RequireAnyRole(cfg.AdminAllowedRoles...), func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		var input service.LandingInput
+		if c.ShouldBindJSON(&input) != nil {
+			response.Error(c, 400, 4001, "配置格式无效")
+			return
+		}
+		page, err := landings.Update(c.Request.Context(), id, input)
+		if err != nil {
+			writeLandingError(c, err)
+			return
+		}
+		response.OK(c, page)
+	})
 	group.GET("/landing-pages", func(c *gin.Context) {
 		items, err := landings.List(c.Request.Context())
 		if err != nil {

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -160,8 +162,21 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		}
 
 		link.Code = base62.Encode(link.ID)
-		if err := tx.Model(&link).Update("code", link.Code).Error; err != nil {
-			return err
+		for attempt := 0; attempt < 5; attempt++ {
+			err := tx.Model(&link).Update("code", link.Code).Error
+			if err == nil {
+				break
+			}
+			if !errors.Is(normalizeCreateError(err), ErrCodeConflict) || attempt == 4 {
+				return err
+			}
+			// Existing MySQL installations may have case-insensitive indexes.
+			// Keep their schema and all existing short URLs unchanged.
+			candidate := make([]byte, 6)
+			if _, err = rand.Read(candidate); err != nil {
+				return err
+			}
+			link.Code = hex.EncodeToString(candidate)
 		}
 		if err := createChannelConfig(tx, link.ID, input.Channel, linkType); err != nil {
 			return err
@@ -177,7 +192,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 
 func (s *LinkService) List(ctx context.Context, linkType string) ([]model.Link, error) {
 	var links []model.Link
-	query := s.db.WithContext(ctx).Order("id DESC").Limit(100)
+	query := s.db.WithContext(ctx).Order("id DESC")
 	if linkType != "" {
 		query = query.Where("type = ?", linkType)
 	}

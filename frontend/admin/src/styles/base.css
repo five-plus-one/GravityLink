@@ -74,6 +74,45 @@ code,
   font-size: var(--font-size-base);
 }
 
+.startup-recovery {
+  width: min(460px, calc(100vw - 40px));
+  margin: 18vh auto 0;
+  padding: 36px;
+  text-align: center;
+  border: 1px solid rgba(217, 228, 242, 0.92);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-lg);
+}
+
+.startup-recovery__mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-4);
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #62a7ff, #2787f5 58%, #7067f0);
+}
+
+.startup-recovery p {
+  margin: var(--space-3) 0 var(--space-5);
+  color: var(--color-text-secondary);
+}
+
+.startup-recovery button {
+  min-width: 120px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: #fff;
+  background: var(--color-primary);
+  cursor: pointer;
+}
+
 /* 品牌 Logo */
 .brand-mark {
   width: 36px;

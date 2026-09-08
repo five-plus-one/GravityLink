@@ -163,7 +163,11 @@ def run():
     def page(template, content):
         return client.ok('/api/v1/landing-pages', 'POST', {'template': template, 'title': 'E2E ' + template, 'domain_id': landing['ID'], 'content': content})
     qrpage = page('liveqr', {'headline': 'E2E QR', 'show_logo': False})
-    qr = link('liveqr', landing_domain_id=landing['ID'], landing_page_id=qrpage['ID'], strategy={'mode': 'round_robin', 'targets': [{'target_url': 'https://example.com/one.png', 'scan_limit': 1}, {'target_url': 'https://example.com/two.png'}]})
+    from repair_demo_qr import upload as upload_fixture
+    subprocess.run(['node', str(ROOT/'scripts/generate-test-qrs.cjs')],check=True)
+    first_image=upload_fixture(client,WORK/'demo-qr-first.png')
+    second_image=upload_fixture(client,WORK/'demo-qr-second.png')
+    qr = link('liveqr', landing_domain_id=landing['ID'], landing_page_id=qrpage['ID'], strategy={'mode': 'round_robin', 'targets': [{'target_url': first_image+'?fixture=one.png', 'scan_limit': 1}, {'target_url': second_image+'?fixture=two.png'}]})
     check('live QR entry redirects to landing', landing['Host'] in visit(qr)[1].get('Location', ''))
     first, second = visit(qr, landing['Host']), visit(qr, landing['Host'])
     check('live QR landing renders', first[0] == 200 and 'one.png' in first[2] and first[1].get('Cache-Control') == 'no-store')
@@ -172,7 +176,7 @@ def run():
     check('disabled direct landing blocked', visit(qr, landing['Host'])[0] == 404)
     client.ok('/api/v1/links/' + str(qr['ID']), 'PUT', {'status': 'active', 'expire_at': '2020-01-01T00:00:00Z'})
     check('expired direct landing blocked', visit(qr, landing['Host'])[0] == 410)
-    limited = link('liveqr', landing_domain_id=landing['ID'], landing_page_id=qrpage['ID'], strategy={'mode': 'weighted', 'targets': [{'target_url': 'https://example.com/limited.png', 'weight': 2, 'scan_limit': 1}]})
+    limited = link('liveqr', landing_domain_id=landing['ID'], landing_page_id=qrpage['ID'], strategy={'mode': 'weighted', 'targets': [{'target_url': first_image+'?fixture=limited.png', 'weight': 2, 'scan_limit': 1}]})
     check('weighted target works', 'limited.png' in visit(limited, landing['Host'])[2])
     check('scan limit exhausted', 'limited.png' not in visit(limited, landing['Host'])[2])
     unsafe = {'type': 'liveqr', 'entry_domain_id': entry['ID'], 'landing_domain_id': landing['ID'], 'landing_page_id': qrpage['ID'], 'strategy': {'mode': 'weighted', 'targets': [{'target_url': 'javascript:alert(1)'}]}}

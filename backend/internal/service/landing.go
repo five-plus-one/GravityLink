@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -85,6 +87,42 @@ func (s *LandingService) Get(ctx context.Context, id uint64) (model.LandingPage,
 		return model.LandingPage{}, ErrLandingNotFound
 	}
 	return page, err
+}
+
+func (s *LandingService) Update(ctx context.Context, id uint64, input LandingInput) (model.LandingPage, error) {
+	page, err := s.Get(ctx, id)
+	if err != nil {
+		return page, err
+	}
+	if page.Template != "liveqr" || input.Template != page.Template || input.DomainID != page.DomainID || !json.Valid(input.Content) {
+		return page, ErrInvalidTemplate
+	}
+	updated, err := landingFromInput(input)
+	if err != nil {
+		return page, err
+	}
+	err = s.db.WithContext(ctx).Model(&page).Updates(map[string]any{"title": updated.Title, "content": updated.Content}).Error
+	if err != nil {
+		return page, err
+	}
+	return s.Get(ctx, id)
+}
+
+func (s *LandingService) Preview(ctx context.Context, id uint64) (string, error) {
+	page, err := s.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	switch page.Template {
+	case "liveqr":
+		return s.renderLiveQRPage(page, "")
+	case "redirect_notice":
+		return s.renderNoticePage(page, "")
+	case "custom":
+		return s.renderCustomPage(page)
+	default:
+		return "", ErrInvalidTemplate
+	}
 }
 
 // RenderByCode 渲染落地页 HTML，返回 (html, httpStatus, linkID, error)。
@@ -176,6 +214,7 @@ func (s *LandingService) renderLiveQRPage(page model.LandingPage, targetURL stri
 		content.ThemeColor = defaultThemeColor
 	}
 
+	targetURL = normalizeManagedUploadURL(targetURL)
 	data := map[string]interface{}{
 		"Title":      page.Title,
 		"ThemeColor": content.ThemeColor,
@@ -186,6 +225,7 @@ func (s *LandingService) renderLiveQRPage(page model.LandingPage, targetURL stri
 		"LogoURL":    content.LogoURL,
 		"TargetURL":  targetURL,
 		"IsImage":    isImageURL(targetURL),
+		"Preview":    targetURL == "",
 		"ButtonText": "打开目标",
 	}
 	return s.executeTemplate("liveqr.html", data)
@@ -253,8 +293,24 @@ func (s *LandingService) executeTemplate(name string, data interface{}) (string,
 }
 
 func isImageURL(rawURL string) bool {
-	lower := strings.ToLower(rawURL)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	lower := strings.ToLower(parsed.Path)
 	return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".webp") || strings.HasSuffix(lower, ".gif")
+}
+
+func normalizeManagedUploadURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || !strings.HasPrefix(parsed.Path, "/uploads/") {
+		return rawURL
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()) {
+		return parsed.EscapedPath()
+	}
+	return rawURL
 }
 
 // sanitizeCustomHTML 拦截最危险的注入向量：

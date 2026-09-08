@@ -96,6 +96,35 @@ func (m *Manager) Start() error {
 	return m.activate(m.cfg, false)
 }
 
+// RecoverStartup retries an installed runtime without persisting configuration.
+// It exits permanently on success, reset, or shutdown.
+func (m *Manager) RecoverStartup(ctx context.Context) {
+	retryStartup(ctx, 5*time.Second, func() bool {
+		m.mu.RLock()
+		cfg, initialized := m.cfg, m.initialized
+		m.mu.RUnlock()
+		if initialized || !cfg.InstallationComplete || cfg.ResetPending {
+			return true
+		}
+		return m.activate(cfg, false) == nil
+	})
+}
+
+func retryStartup(ctx context.Context, interval time.Duration, attempt func() bool) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if ctx.Err() != nil || attempt() {
+				return
+			}
+		}
+	}
+}
+
 func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.handler.Load().(handlerHolder).handler.ServeHTTP(w, r)
 }

@@ -25,6 +25,23 @@ import (
 
 var ErrWechat = errors.New("微信分享暂不可用，请检查公众号配置、IP 白名单和安全域名")
 
+// WechatAPIError deliberately excludes upstream messages and request URLs.
+type WechatAPIError struct {
+	Stage string
+	Code  int
+}
+
+func (e *WechatAPIError) Error() string { return ErrWechat.Error() }
+func (e *WechatAPIError) Unwrap() error { return ErrWechat }
+
+func WechatDiagnostic(err error) (string, int) {
+	var apiErr *WechatAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Stage, apiErr.Code
+	}
+	return "configuration", 0
+}
+
 type WechatService struct {
 	db      *gorm.DB
 	keyFile string
@@ -174,16 +191,18 @@ func (s *WechatService) Sign(ctx context.Context, pageURL string) (map[string]an
 		}
 		var token struct {
 			AccessToken string `json:"access_token"`
+			Code        int    `json:"errcode"`
 		}
-		if s.fetch(ctx, "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid="+url.QueryEscape(a.AppID)+"&secret="+url.QueryEscape(secret), &token) != nil || token.AccessToken == "" {
-			return nil, ErrWechat
+		if s.fetch(ctx, "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid="+url.QueryEscape(a.AppID)+"&secret="+url.QueryEscape(secret), &token) != nil || token.AccessToken == "" || token.Code != 0 {
+			return nil, &WechatAPIError{Stage: "access_token", Code: token.Code}
 		}
 		var ticket struct {
 			Ticket  string `json:"ticket"`
 			Expires int    `json:"expires_in"`
+			Code    int    `json:"errcode"`
 		}
-		if s.fetch(ctx, "https://api.weixin.qq.com/cgi-bin/ticket/getticket?type=jsapi&access_token="+url.QueryEscape(token.AccessToken), &ticket) != nil || ticket.Ticket == "" || ticket.Expires <= 120 {
-			return nil, ErrWechat
+		if s.fetch(ctx, "https://api.weixin.qq.com/cgi-bin/ticket/getticket?type=jsapi&access_token="+url.QueryEscape(token.AccessToken), &ticket) != nil || ticket.Ticket == "" || ticket.Expires <= 120 || ticket.Code != 0 {
+			return nil, &WechatAPIError{Stage: "jsapi_ticket", Code: ticket.Code}
 		}
 		s.ticket = ticket.Ticket
 		s.expires = time.Now().Add(time.Duration(ticket.Expires-120) * time.Second)

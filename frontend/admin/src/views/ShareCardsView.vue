@@ -9,13 +9,16 @@ const items=ref<Card[]>([]),domains=ref<DomainItem[]>([]),show=ref(false),config
 const error=ref(''),message=useMessage();
 const form=reactive<Card>({ID:0,DomainID:0,Title:'',Description:'',ImageURL:'',TargetURL:'',Status:'active',Visits:0,PublicURL:''});
 const config=reactive({appid:'',secret:'',secret_configured:false});
+const savedAppID=ref(''),checking=ref(false),checkResult=ref<{ok:boolean;stage:string;wechat_code:number}|null>(null);
+const configDirty=computed(()=>config.appid!==savedAppID.value||config.secret!=='');
+async function checkConfig(){checking.value=true;checkResult.value=null;try{checkResult.value=await request('/api/admin/wechat-config/check',{method:'POST'});}catch(e){message.error(String(e));}finally{checking.value=false;}}
 const origin=computed(()=>{const d=domains.value.find(d=>d.ID===form.DomainID);return d?`${d.Scheme}://${d.Host}`:'';});
 async function refresh(){loading.value=true;error.value='';try{items.value=(await request<{items:Card[]}>('/api/admin/share-cards')).items;domains.value=(await listDomains()).items.filter(d=>d.Type==='entry'&&d.Status==='active');}catch(e){error.value=String(e);}finally{loading.value=false;}}
 onMounted(refresh);
 function edit(card?:Card){Object.assign(form,card||{ID:0,DomainID:0,Title:'',Description:'',ImageURL:'',TargetURL:'',Status:'active',Visits:0,PublicURL:''});show.value=true;}
 async function save(){busy.value=true;try{await request('/api/admin/share-cards'+(form.ID?`/${form.ID}`:''),{method:form.ID?'PUT':'POST',body:JSON.stringify(form)});show.value=false;await refresh();message.success('卡片已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
-async function openConfig(){try{Object.assign(config,await request('/api/admin/wechat-config'),{secret:''});configShow.value=true;}catch(e){message.error(String(e));}}
-async function saveConfig(){busy.value=true;try{await request('/api/admin/wechat-config',{method:'PUT',body:JSON.stringify({appid:config.appid,secret:config.secret})});config.secret='';configShow.value=false;message.success('公众号配置已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
+async function openConfig(){try{Object.assign(config,await request('/api/admin/wechat-config'),{secret:''});savedAppID.value=config.appid;checkResult.value=null;configShow.value=true;}catch(e){message.error(String(e));}}
+async function saveConfig(){busy.value=true;try{await request('/api/admin/wechat-config',{method:'PUT',body:JSON.stringify({appid:config.appid,secret:config.secret})});config.secret='';savedAppID.value=config.appid;config.secret_configured=true;checkResult.value=null;message.success('公众号配置已保存，可继续检测连接');}catch(e){message.error(String(e));}finally{busy.value=false;}}
 async function copy(card:Card){try{await navigator.clipboard.writeText(card.PublicURL);message.success('分享地址已复制');}catch{message.error('复制失败，请手动复制下方地址');}}
 </script>
 <template>
@@ -50,7 +53,9 @@ async function copy(card:Card){try{await navigator.clipboard.writeText(card.Publ
   <NAlert type="info">需要公众号具备 JS-SDK 权限，并配置服务器 IP 白名单及 JS 接口安全域名。测试号还需满足测试号的关注和权限要求。</NAlert>
   <NFormItem label="AppID"><NInput v-model:value="config.appid" autocomplete="off"/></NFormItem>
   <NFormItem :label="config.secret_configured?'AppSecret（已配置，留空保留）':'AppSecret'"><NInput v-model:value="config.secret" type="password" autocomplete="new-password"/></NFormItem>
-  <NButton type="primary" :loading="busy" @click="saveConfig">保存配置</NButton>
+  <div class="actions"><NButton type="primary" :loading="busy" :disabled="checking" @click="saveConfig">保存配置</NButton><NButton :loading="checking" :disabled="busy||configDirty||!config.secret_configured" @click="checkConfig">检测已保存配置</NButton></div>
+  <p class="hint">修改后请先保存。检测只验证服务端票据；微信实际分享还需使用手机可访问的域名。</p>
+  <NAlert v-if="checkResult&&!configDirty" :type="checkResult.ok?'success':'error'">{{checkResult.ok?'服务端票据可用。请继续在微信内打开公网分享地址，验证标题、摘要和封面。':`连接检测失败：${checkResult.stage}，微信错误码 ${checkResult.wechat_code || '未返回（检查配置或网络）'}。请检查测试号权限、凭据及服务器 IP 白名单。`}}</NAlert>
  </NModal>
 </template>
 <style scoped>.actions,.meta{display:flex;gap:10px;align-items:center}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}.cards article{padding:22px;border:1px solid #e6edf6;border-radius:20px}.preview{display:flex;gap:16px;background:#f4f6f9;padding:16px;border-radius:12px;min-height:130px}.preview div{flex:1}.preview h3{margin:0 0 8px}.preview p,.hint{color:#7b8799}.preview img{width:70px;height:70px;object-fit:cover;border-radius:8px}.meta{margin-top:16px}.url{overflow-wrap:anywhere;font-size:12px;color:#64748b}</style>

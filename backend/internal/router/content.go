@@ -51,6 +51,16 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 		}
 		response.OK(c, gin.H{"saved": true})
 	})
+	admin.POST("/wechat-config/check", func(c *gin.Context) {
+		// Fixed URL: this checks ticket availability, not a client or domain.
+		_, err := wx.Sign(c.Request.Context(), "https://localhost/wechat-check")
+		if err != nil {
+			stage, code := service.WechatDiagnostic(err)
+			response.OK(c, gin.H{"ok": false, "stage": stage, "wechat_code": code})
+			return
+		}
+		response.OK(c, gin.H{"ok": true, "stage": "jsapi_ticket", "wechat_code": 0})
+	})
 	admin.GET("/materials", func(c *gin.Context) {
 		var items []model.Material
 		if deps.DB.Order("id DESC").Find(&items).Error != nil {

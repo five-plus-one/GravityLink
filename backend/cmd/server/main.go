@@ -21,10 +21,14 @@ func main() {
 		Level: cfg.LogLevel,
 	}))
 	manager := app.NewManager(cfg, logger)
+	defer manager.Shutdown()
 	if err := manager.Start(); err != nil {
 		logger.Warn("normal runtime unavailable; admin setup mode enabled", "error", err)
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() { defer close(done); manager.RecoverStartup(ctx) }()
+		defer func() { cancel(); <-done }()
 	}
-	defer manager.Shutdown()
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

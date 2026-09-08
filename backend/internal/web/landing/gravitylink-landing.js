@@ -1,4 +1,10 @@
 (() => {
+  const qr = document.querySelector('[data-liveqr-image]');
+  if (qr) {
+    const failed = () => { qr.hidden = true; const message = document.querySelector('[data-liveqr-error]'); if (message) message.hidden = false; };
+    qr.addEventListener('error', failed);
+    if (qr.complete && qr.naturalWidth === 0) failed();
+  }
   const countdown = document.querySelector("[data-countdown]");
   if (!countdown) {
     return;

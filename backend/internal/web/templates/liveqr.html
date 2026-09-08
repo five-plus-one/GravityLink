@@ -14,8 +14,11 @@
     {{end}}
     <h1>{{.Headline}}</h1>
     {{if .Subtext}}<p>{{.Subtext}}</p>{{end}}
-    {{if .IsImage}}
-    <img class="landing-qr" src="{{.TargetURL}}" alt="{{.Headline}}">
+    {{if .Preview}}
+    <div class="landing-qr" style="display:grid;place-items:center;min-height:220px;border:2px dashed #cbd5e1;color:#64748b;background:#f8fafc">群二维码展示区域</div>
+    {{else if .IsImage}}
+    <img class="landing-qr" data-liveqr-image src="{{.TargetURL}}" alt="群二维码">
+    <p data-liveqr-error role="alert" hidden>二维码图片加载失败，请联系管理员检查图片地址或重新上传二维码。</p>
     {{else}}
     <a class="landing-button" href="{{.TargetURL}}">{{.ButtonText}}</a>
     {{end}}

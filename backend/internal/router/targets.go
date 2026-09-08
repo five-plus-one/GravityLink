@@ -1,13 +1,101 @@
 package router
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/model"
 	"gravitylink/backend/internal/response"
+	"strconv"
+	"strings"
 	"time"
 )
 
+type targetBatchInput struct {
+	URLs      []string `json:"urls"`
+	ScanLimit *uint    `json:"scan_limit"`
+}
+
+func validateTargetBatch(in targetBatchInput) error {
+	if len(in.URLs) == 0 || len(in.URLs) > 100 {
+		return fmt.Errorf("每批需包含 1–100 条图片地址")
+	}
+	if in.ScanLimit != nil && *in.ScanLimit == 0 {
+		return fmt.Errorf("阈值必须大于 0，留空为不限")
+	}
+	seen := map[string]bool{}
+	for i, raw := range in.URLs {
+		u := strings.TrimSpace(raw)
+		if !validTargetURL(u) || len(u) > 2048 {
+			return fmt.Errorf("第 %d 条地址无效", i+1)
+		}
+		if seen[u] {
+			return fmt.Errorf("第 %d 条地址重复", i+1)
+		}
+		seen[u] = true
+	}
+	return nil
+}
+
+func validTargetURL(raw string) bool {
+	if httpURL(raw) {
+		return true
+	}
+	return strings.HasPrefix(raw, "/uploads/") && !strings.Contains(raw, "..") && !strings.ContainsAny(raw, "?#\\")
+}
+
 func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
+	admin.POST("/links/:id/targets/:target/reset-count", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		targetID, err := strconv.ParseUint(c.Param("target"), 10, 64)
+		if err != nil || targetID == 0 {
+			response.Error(c, 400, 4001, "二维码 ID 无效")
+			return
+		}
+		var input struct {
+			ExpectedCount *uint  `json:"expected_count"`
+			Confirmation  string `json:"confirmation"`
+		}
+		if c.ShouldBindJSON(&input) != nil || input.ExpectedCount == nil || input.Confirmation != "RESET TARGET COUNT" {
+			response.Error(c, 400, 4001, "请确认当前计数")
+			return
+		}
+		var target model.RoutingTarget
+		if deps.DB.Joins("JOIN routing_strategies ON routing_strategies.id = routing_targets.strategy_id").Joins("JOIN links ON links.id = routing_strategies.link_id AND links.deleted_at IS NULL").Where("routing_targets.id = ? AND routing_strategies.link_id = ?", targetID, id).First(&target).Error != nil {
+			response.Error(c, 404, 4004, "二维码不存在")
+			return
+		}
+		conflict := errors.New("count changed")
+		err = deps.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			result := tx.Model(&model.RoutingTarget{}).Where("id = ? AND status = ? AND scan_count = ?", target.ID, "disabled", *input.ExpectedCount).UpdateColumn("scan_count", 0)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return conflict
+			}
+			userValue, _ := c.Get(middleware.ContextUserKey)
+			user := userValue.(middleware.AuthUser)
+			detail, _ := json.Marshal(map[string]any{"old_count": *input.ExpectedCount, "new_count": 0, "link_id": id})
+			typ, tid := "routing_target", fmt.Sprint(target.ID)
+			return tx.Create(&model.AuditLog{UserID: &user.ID, Action: "target.reset_count", TargetType: &typ, TargetID: &tid, Detail: detail}).Error
+		})
+		if errors.Is(err, conflict) {
+			response.Error(c, 409, 4009, "请先停用二维码并刷新当前计数")
+			return
+		}
+		if err != nil {
+			response.Error(c, 500, 5000, "重置失败，计数未变更")
+			return
+		}
+		response.OK(c, gin.H{"reset": true})
+	})
 	strategy := func(c *gin.Context) (model.RoutingStrategy, bool) {
 		id, ok := parseID(c)
 		if !ok {
@@ -67,7 +155,7 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 			ExpireAt  *time.Time
 			Owner     string
 		}
-		if c.ShouldBindJSON(&in) != nil || !httpURL(in.TargetURL) || len(in.Label) > 128 || len(in.Owner) > 128 || in.Weight < 1 || (in.Status != "active" && in.Status != "disabled") {
+		if c.ShouldBindJSON(&in) != nil || !validTargetURL(in.TargetURL) || len(in.Label) > 128 || len(in.Owner) > 128 || in.Weight < 1 || (in.Status != "active" && in.Status != "disabled") {
 			response.Error(c, 400, 4001, "目标配置无效")
 			return
 		}
@@ -100,4 +188,32 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 		response.OK(c, t)
 	}
 	admin.POST("/links/:id/targets", save)
+	admin.POST("/links/:id/targets/batch", func(c *gin.Context) {
+		s, ok := strategy(c)
+		if !ok {
+			return
+		}
+		var in targetBatchInput
+		if c.ShouldBindJSON(&in) != nil {
+			response.Error(c, 400, 4001, "批量格式无效")
+			return
+		}
+		if err := validateTargetBatch(in); err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		items := make([]model.RoutingTarget, 0, len(in.URLs))
+		err := deps.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			for i, raw := range in.URLs {
+				label := fmt.Sprintf("批量二维码 %d", i+1)
+				items = append(items, model.RoutingTarget{StrategyID: s.ID, Label: &label, TargetURL: strings.TrimSpace(raw), Weight: 1, ScanLimit: in.ScanLimit, Status: "active"})
+			}
+			return tx.Create(&items).Error
+		})
+		if err != nil {
+			response.Error(c, 500, 5000, "批量保存失败，未添加任何二维码")
+			return
+		}
+		response.OK(c, gin.H{"items": items, "total": len(items)})
+	})
 }

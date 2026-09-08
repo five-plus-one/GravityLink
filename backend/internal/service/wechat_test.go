@@ -2,9 +2,36 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"gravitylink/backend/internal/model"
+	"net/http"
+	"strings"
 	"testing"
 )
+
+type wechatErrorTransport struct{}
+
+func (wechatErrorTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("secret=test-sensitive-value")
+}
+
+func TestWechatDiagnosticsNeverExposeUpstreamCredentials(t *testing.T) {
+	s := &WechatService{client: &http.Client{Transport: wechatErrorTransport{}}}
+	var out any
+	err := s.fetch(context.Background(), "https://api.weixin.qq.com/?secret=test-sensitive-value", &out)
+	if !errors.Is(err, ErrWechat) || strings.Contains(err.Error(), "test-sensitive-value") {
+		t.Fatal("transport error was not sanitized")
+	}
+	wrapped := &WechatAPIError{Stage: "access_token", Code: 40164}
+	stage, code := WechatDiagnostic(wrapped)
+	if stage != "access_token" || code != 40164 || !errors.Is(wrapped, ErrWechat) {
+		t.Fatal("safe diagnostics unavailable")
+	}
+	if stage, code = WechatDiagnostic(errors.New("secret=test-sensitive-value")); stage != "configuration" || code != 0 {
+		t.Fatal("unexpected diagnostic fallback")
+	}
+}
 
 func TestWechatOfficialSignatureVector(t *testing.T) {
 	got := WechatSignature("sM4AOVdWfPE4DxkXGEs8VMCPGGVi4C3VM0P37wVUCFvkVAy_90u5h9nbSlYy3-Sl-HhTdfl2fzFy1AOcHKP7qg", "Wm3WZYTPz0wzccnW", 1414587457, "http://mp.weixin.qq.com?params=value#ignored")

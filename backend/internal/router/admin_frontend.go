@@ -21,7 +21,7 @@ func NewAdminFrontendHandler(api http.Handler, setupHandlers ...http.Handler) ht
 			setupHandlers[0].ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/uploads/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/uploads/") || strings.HasPrefix(r.URL.Path, "/assets/landing/") {
 			api.ServeHTTP(w, r)
 			return
 		}
@@ -36,6 +36,10 @@ func NewAdminFrontendHandler(api http.Handler, setupHandlers ...http.Handler) ht
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		if strings.HasPrefix(cleanPath, "assets/") {
+			http.NotFound(w, r)
+			return
+		}
 
 		serveAdminIndex(w, r, fileServer)
 	})
@@ -48,5 +52,6 @@ func serveAdminIndex(w http.ResponseWriter, _ *http.Request, _ http.Handler) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(indexHTML)
 }
