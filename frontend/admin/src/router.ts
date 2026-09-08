@@ -44,6 +44,8 @@ const router = createRouter({
         { path: 'domains', name: 'domains', component: DomainsView, meta: { title: '域名管理', subtitle: '维护入口、中转与落地域名' } },
         { path: 'landing-pages', name: 'landing-pages', component: LandingPagesView, meta: { title: '落地页', subtitle: '管理公开访问页面与展示模板' } },
         { path: 'stats', name: 'stats', component: StatsView, meta: { title: '数据看板', subtitle: '查看访问趋势、设备与地域分布' } },
+        { path: 'api-keys', name: 'api-keys', component: () => import('./views/APIKeysView.vue'), meta: { title: '开放 API', subtitle: '管理 API Key，通过 Token 或签名创建短链接' } },
+        { path: 'kami', name: 'kami', component: () => import('./views/KamiView.vue'), meta: { title: '卡密分发', subtitle: '管理提取项目、导入卡密与查看提取记录' } },
         { path: 'users', name: 'users', component: UsersView, meta: { title: '账号与权限', subtitle: '管理后台账号、角色与访问权限' } },
         { path: 'profile', name: 'profile', component: ProfileView, meta: { title: '个人中心', subtitle: '查看当前账号信息与安全状态' } },
         { path: 'settings', name: 'settings', component: SettingsView, meta: { title: '系统设置', subtitle: '维护站点配置、认证方式与运行参数' } },
