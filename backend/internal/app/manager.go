@@ -285,8 +285,15 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 		}
 	}()
 
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	notifier := service.NewNotifier(db, redisClient)
+	go worker.NewAccessLogConsumer(db, redisClient, m.logger).Start(workerCtx)
+	go worker.NewLogArchiver(db, m.logger).Start(workerCtx)
+	go worker.NewStatFlusher(db, redisClient, m.logger).Start(workerCtx)
+	go worker.NewDomainCheckWorker(db, redisClient, notifier, m.logger).Start(workerCtx)
+
 	engine := router.New(router.Dependencies{
-		Config: cfg, DB: db, Redis: redisClient, Logger: m.logger, ResetSystem: m.Reset,
+		Config: cfg, DB: db, Redis: redisClient, Logger: m.logger, ResetSystem: m.Reset, Notifier: notifier,
 	})
 	if persist {
 		if err := config.SaveFile(cfg.ConfigFile, cfg); err != nil {
@@ -294,11 +301,6 @@ func (m *Manager) activate(cfg config.Config, persist bool) error {
 			return fmt.Errorf("save config: %w", err)
 		}
 	}
-
-	workerCtx, stopWorkers := context.WithCancel(context.Background())
-	go worker.NewAccessLogConsumer(db, redisClient, m.logger).Start(workerCtx)
-	go worker.NewLogArchiver(db, m.logger).Start(workerCtx)
-	go worker.NewStatFlusher(db, redisClient, m.logger).Start(workerCtx)
 
 	m.cfg = cfg
 	m.db = db

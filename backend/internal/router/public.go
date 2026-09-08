@@ -95,6 +95,10 @@ func dispatchByDomainType(deps Dependencies, links *service.LinkService, landing
 		case model.DomainTypeLanding:
 			html, status, linkID, err := landings.RenderByCode(c.Request.Context(), code)
 			if err != nil {
+				// P1：活码全部二维码耗尽时告警运营（Notifier 内置 1 小时防抖）
+				if errors.Is(err, service.ErrNoRoutingTarget) {
+					deps.Notifier.SendAsync("qr_exhausted:"+code, "⚠ 活码二维码已全部耗尽", "活码 "+code+" 的所有二维码达到阈值/到期/停用，访客正在看到「暂无可用群」页面，请尽快补充二维码。")
+				}
 				writeResolveError(c, err, pages)
 				return
 			}
