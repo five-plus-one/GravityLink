@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { NButton, NModal, NEmpty, useMessage } from 'naive-ui';
 import { request } from '../api';
-const props = defineProps<{ origin: string; multiple?:boolean; relative?:boolean }>();
+const props = defineProps<{ origin?: string; multiple?:boolean; relative?:boolean }>();
 const emit = defineEmits<{ select: [url: string];selectMany:[urls:string[]] }>();
 const selected=ref<string[]>([]);
 const show = ref(false), busy = ref(false);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 // 统一由 echarts.ts 注册图表组件（含饼图），模块加载即完成注册
 import '../echarts';
 import VChart from 'vue-echarts';
@@ -21,6 +22,7 @@ import {
 } from '../api';
 
 const message = useMessage();
+const route = useRoute();
 
 const links = ref<LinkItem[]>([]);
 const selectedLinkId = ref<number | null>(null);
@@ -161,7 +163,10 @@ onMounted(async () => {
   try {
     links.value = (await listLinks()).items;
     if (links.value.length > 0) {
-      selectedLinkId.value = links.value[0].ID;
+      // 支持从链接列表/概览页 ?linkId= 直达指定链接的统计
+      const wanted = Number(route.query.linkId);
+      const matched = links.value.find((l) => l.ID === wanted);
+      selectedLinkId.value = (matched || links.value[0]).ID;
     }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载链接列表失败');

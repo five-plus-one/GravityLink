@@ -174,6 +174,38 @@ func (s *StatService) redisPFCount(ctx context.Context, key string) uint64 {
 	return uint64(value)
 }
 
+// Reset 清空某链接的全部统计数据：Redis 实时计数 + MySQL 聚合表。
+// access_logs 原始日志保留（审计需要），仅统计口径归零。
+func (s *StatService) Reset(ctx context.Context, linkID uint64) error {
+	if linkID == 0 {
+		return fmt.Errorf("invalid link id")
+	}
+	// Redis：SCAN 该链接的 stat:pv/uv/hourly/dev/geo keys 后删除
+	var cursor uint64
+	for {
+		batch, next, err := s.redis.Scan(ctx, cursor, fmt.Sprintf("stat:*:%d:*", linkID), 200).Result()
+		if err != nil {
+			return err
+		}
+		if len(batch) > 0 {
+			if err := s.redis.Del(ctx, batch...).Err(); err != nil {
+				return err
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	// MySQL：清空聚合表对应行
+	for _, table := range []string{"stat_daily", "stat_hourly", "stat_device", "stat_geo"} {
+		if err := s.db.WithContext(ctx).Exec(fmt.Sprintf("DELETE FROM %s WHERE link_id = ?", table), linkID).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func sameDay(a time.Time, b time.Time) bool {
 	ay, am, ad := a.Date()
 	by, bm, bd := b.Date()

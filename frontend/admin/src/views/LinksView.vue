@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { useRoute } from 'vue-router';
-import { Copy, ExternalLink, Pencil, Plus, RefreshCw, Search, Trash2 } from '@lucide/vue';
+import { useRoute, useRouter } from 'vue-router';
+import { BarChart3, Copy, ExternalLink, Pencil, Plus, RefreshCw, Search, Send, Trash2 } from '@lucide/vue';
 import {
   NAlert,
   NButton,
@@ -19,6 +19,7 @@ import {
   NRadioButton,
   NRadioGroup,
   NSelect,
+  NSwitch,
   NTag,
   useMessage,
   type DataTableColumns,
@@ -40,8 +41,11 @@ import TargetManager from '../components/TargetManager.vue';
 import MaterialPicker from '../components/MaterialPicker.vue';
 import EntryQRCode from '../components/EntryQRCode.vue';
 import BatchAdd from '../components/BatchAdd.vue';
+import ShareSuccessModal from '../components/ShareSuccessModal.vue';
+import LinkShareDrawer from '../components/LinkShareDrawer.vue';
 
 const route = useRoute();
+const router = useRouter();
 const message = useMessage();
 const domains = useDomainStore();
 const auth = useAuthStore();
@@ -60,6 +64,12 @@ const saving = ref(false);
 const modalError = ref('');
 const formRef = ref<FormInst | null>(null);
 const editingId = ref<number | null>(null);
+
+// P0：创建成功分享面板 + 行内分享抽屉
+const shareLink = ref<LinkItem | null>(null);
+const showShare = ref(false);
+const drawerLink = ref<LinkItem | null>(null);
+const showDrawer = ref(false);
 
 const form = reactive({
   type: 'short' as 'short' | 'channel' | 'liveqr',
@@ -138,12 +148,19 @@ const rules: FormRules = {
         if (form.type !== 'liveqr') return true;
         if (!form.targets.length) return new Error('请至少添加一个二维码目标');
         for (const item of form.targets) {
-          try {
-            const url = new URL(item.url);
-            if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error();
-          } catch {
-            return new Error(`目标“${item.label || '未命名'}”的 URL 格式不正确`);
+          const url = item.url.trim();
+          // 站内素材相对路径与 http(s) 绝对地址均可（与后端口径一致）
+          const isRelative = url.startsWith('/uploads/') && !url.includes('..');
+          let ok = isRelative;
+          if (!ok) {
+            try {
+              const parsed = new URL(url);
+              ok = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+            } catch {
+              ok = false;
+            }
           }
+          if (!ok) return new Error(`目标“${item.label || '未命名'}”需为 http(s) 地址或站内素材路径`);
         }
         return true;
       },
@@ -213,15 +230,33 @@ const columns: DataTableColumns<LinkItem> = [
     title: '状态',
     key: 'Status',
     width: 90,
-    render: (row) =>
-      h(NTag, { type: statusTypeMap[row.Status] || 'default', size: 'small', round: true }, () => statusLabelMap[row.Status] || row.Status),
+    render: (row) => {
+      if (row.Status === 'expired' || !canWrite.value) {
+        return h(NTag, { type: statusTypeMap[row.Status] || 'default', size: 'small', round: true }, () => statusLabelMap[row.Status] || row.Status);
+      }
+      return h(NSwitch, {
+        size: 'small',
+        value: row.Status === 'active',
+        onUpdateValue: (value: boolean) => toggleStatus(row, value),
+      });
+    },
   },
   {
     title: '操作',
     key: 'actions',
     width: 300,
     render: (row) =>
-      h('div', { style: 'display:flex;gap:4px' }, [
+      h('div', { style: 'display:flex;gap:4px;align-items:center' }, [
+        h(
+          NButton,
+          { text: true, size: 'small', title: '分享（链接+二维码+数据）', disabled: !shortUrlOf(row), onClick: () => { drawerLink.value = row; showDrawer.value = true; } },
+          { icon: () => h(NIcon, { size: 14 }, { default: () => h(Send) }) },
+        ),
+        h(
+          NButton,
+          { text: true, size: 'small', title: '查看统计', onClick: () => router.push({ path: '/stats', query: { linkId: String(row.ID) } }) },
+          { icon: () => h(NIcon, { size: 14 }, { default: () => h(BarChart3) }) },
+        ),
         h(EntryQRCode, {url:shortUrlOf(row),name:row.Code}),
         canWrite.value && row.Type === 'liveqr' ? h(TargetManager, { linkId: row.ID, origin: shortUrlOf(row) ? new URL(shortUrlOf(row)).origin : '' }) : null,
         h(
@@ -329,7 +364,7 @@ async function submit() {
     if (modalMode.value === 'create') {
       const page = landingPages.value.find(p => p.ID === landingPageId.value && p.Template === 'liveqr');
       if (form.type === 'liveqr' && !page) throw new Error('请选择活码落地页；没有可选项时请先创建 liveqr 落地页');
-      await createLink({
+      const created = await createLink({
         landing_page_id: form.type === 'liveqr' ? page?.ID : undefined,
         landing_domain_id: form.type === 'liveqr' ? page?.DomainID : undefined,
         type: form.type,
@@ -351,6 +386,11 @@ async function submit() {
               }
             : undefined,
       });
+      showModal.value = false;
+      await refresh();
+      // P0 方案 A：创建成功直接进分享面板（短链已自动复制）
+      shareLink.value = created;
+      showShare.value = true;
       message.success('链接已创建');
     } else if (editingId.value !== null) {
       await updateLink(editingId.value, {
@@ -393,6 +433,28 @@ async function copyShortUrl(row: LinkItem) {
     message.error('复制失败，请手动复制');
   }
 }
+
+// P0：行内启停（旧版 switch 交互回归）
+async function toggleStatus(row: LinkItem, active: boolean) {
+  const next = active ? 'active' : 'disabled';
+  const prev = row.Status;
+  row.Status = next;
+  try {
+    await updateLink(row.ID, { status: next });
+    message.success(`${row.Code} 已${active ? '启用' : '停用'}`);
+  } catch (err) {
+    row.Status = prev;
+    message.error(messageOf(err));
+  }
+}
+
+// 编辑弹窗中只读展示入口域名（换绑能力由后端支持后开放）
+const editingEntryDomainHost = computed(() => {
+  if (modalMode.value !== 'edit' || editingId.value === null) return '';
+  const row = items.value.find((i) => i.ID === editingId.value);
+  if (!row) return '';
+  return domains.items.find((d) => d.ID === row.EntryDomainID)?.Host || `#${row.EntryDomainID}`;
+});
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : '操作失败';
@@ -482,10 +544,15 @@ function removeTarget(index: number) {
         <NFormItem v-if="modalMode === 'create'" label="入口域名" path="entryDomainId">
           <NSelect v-model:value="form.entryDomainId" :options="entryDomainOptions" placeholder="选择入口域名" :loading="domains.loading" />
         </NFormItem>
-        <NFormItem v-else label="状态">
-          <NSelect v-model:value="form.status" :options="statusOptions" />
-        </NFormItem>
+        <template v-else>
+          <NFormItem label="入口域名">
+            <NInput :value="editingEntryDomainHost" disabled />
+          </NFormItem>
+        </template>
       </div>
+      <NFormItem v-if="modalMode === 'edit'" label="状态">
+        <NSelect v-model:value="form.status" :options="statusOptions" />
+      </NFormItem>
 
       <NAlert v-if="modalMode === 'create'" type="info" style="margin-bottom:16px">入口域名须指向公开服务。localhost 仅供本机测试；自动测试的 .test 域名没有公共 DNS，不能直接用于对外分享。</NAlert>
       <NFormItem v-if="form.type !== 'liveqr'" label="目标 URL" path="targetUrl">
@@ -510,7 +577,7 @@ function removeTarget(index: number) {
             <div v-for="(target, index) in form.targets" :key="index" class="target-row">
               <div class="target-index">{{ index + 1 }}</div>
               <NInput v-model:value="target.label" placeholder="名称（可选）" />
-              <div><NInput v-model:value="target.url" placeholder="https://example.com/qr.png" /><MaterialPicker :origin="shortUrlBase.get(form.entryDomainId || 0) || ''" @select="target.url=$event" /></div>
+              <div><NInput v-model:value="target.url" placeholder="https://example.com/qr.png 或从素材库选择" /><MaterialPicker relative @select="target.url=$event" /></div>
               <NInputNumber
                 v-if="form.strategyMode === 'weighted'"
                 v-model:value="target.weight"
@@ -547,6 +614,23 @@ function removeTarget(index: number) {
       </div>
     </template>
   </NModal>
+
+  <!-- P0 方案 A：创建成功分享面板 -->
+  <ShareSuccessModal
+    v-model:show="showShare"
+    :link="shareLink"
+    :url="shareLink ? shortUrlOf(shareLink) : ''"
+    :target-url="shareLink?.TargetURL || ''"
+    @recreate="showShare = false; openCreate()"
+  />
+
+  <!-- P0 方案 B：行内分享抽屉 -->
+  <LinkShareDrawer
+    v-model:show="showDrawer"
+    :link="drawerLink"
+    :url="drawerLink ? shortUrlOf(drawerLink) : ''"
+    @edit="((l) => { showDrawer = false; openEdit(l); })($event)"
+  />
   </div>
 </template>
 

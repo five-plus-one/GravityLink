@@ -121,6 +121,63 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 		}
 		response.OK(c, gin.H{"mode": s.Mode, "items": items})
 	})
+	// P1：删除二维码目标（带审计日志）。批量导入贴错不再只能停用。
+	admin.DELETE("/links/:id/targets/:target", func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		targetID, err := strconv.ParseUint(c.Param("target"), 10, 64)
+		if err != nil || targetID == 0 {
+			response.Error(c, 400, 4001, "二维码 ID 无效")
+			return
+		}
+		var s model.RoutingStrategy
+		if deps.DB.Where("link_id = ?", id).First(&s).Error != nil {
+			response.Error(c, 404, 4004, "活码不存在")
+			return
+		}
+		var target model.RoutingTarget
+		if deps.DB.Where("id = ? AND strategy_id = ?", targetID, s.ID).First(&target).Error != nil {
+			response.Error(c, 404, 4004, "二维码不存在")
+			return
+		}
+		err = deps.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Delete(&target).Error; err != nil {
+				return err
+			}
+			userValue, _ := c.Get(middleware.ContextUserKey)
+			user := userValue.(middleware.AuthUser)
+			detail, _ := json.Marshal(map[string]any{"link_id": id, "target_url": target.TargetURL, "label": target.Label})
+			typ, tid := "routing_target", fmt.Sprint(target.ID)
+			return tx.Create(&model.AuditLog{UserID: &user.ID, Action: "target.delete", TargetType: &typ, TargetID: &tid, Detail: detail}).Error
+		})
+		if err != nil {
+			response.Error(c, 500, 5000, "删除失败")
+			return
+		}
+		response.OK(c, gin.H{"deleted": true})
+	})
+	// P1：批量设置扫码阈值（仅作用于启用的目标）。
+	admin.PUT("/links/:id/targets/batch-limit", func(c *gin.Context) {
+		s, ok := strategy(c)
+		if !ok {
+			return
+		}
+		var in struct {
+			ScanLimit *uint `json:"scan_limit"`
+		}
+		if c.ShouldBindJSON(&in) != nil || (in.ScanLimit != nil && *in.ScanLimit == 0) {
+			response.Error(c, 400, 4001, "阈值必须大于 0，留空为不限")
+			return
+		}
+		result := deps.DB.Model(&model.RoutingTarget{}).Where("strategy_id = ?", s.ID).Update("scan_limit", in.ScanLimit)
+		if result.Error != nil {
+			response.Error(c, 500, 5000, "批量设置失败")
+			return
+		}
+		response.OK(c, gin.H{"updated": result.RowsAffected})
+	})
 	admin.PUT("/links/:id/strategy", func(c *gin.Context) {
 		s, ok := strategy(c)
 		if !ok {

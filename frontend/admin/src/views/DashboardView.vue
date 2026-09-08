@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from 'vue';
-import { Activity, ArrowRight, Globe2, LayoutTemplate, Link2, Plus, QrCode } from '@lucide/vue';
-import { NButton, NCard, NDataTable, NEmpty, NGrid, NGridItem, NSkeleton, NStatistic, NTag, useMessage, type DataTableColumns } from 'naive-ui';
+import { useRouter } from 'vue-router';
+import { Activity, ArrowRight, BarChart3, Copy, Globe2, LayoutTemplate, Link2, Plus, QrCode } from '@lucide/vue';
+import { NButton, NCard, NDataTable, NEmpty, NGrid, NGridItem, NIcon, NSkeleton, NStatistic, NTag, useMessage, type DataTableColumns } from 'naive-ui';
 import { listDomains, listLandingPages, listLinks, type DomainItem, type LandingPageItem, type LinkItem } from '../api';
 import TrafficOverview from '../components/TrafficOverview.vue';
 import { useAuthStore } from '../stores/auth';
 
+const router = useRouter();
 const message = useMessage();
 const auth = useAuthStore();
 const canWrite = computed(() => auth.isSuperAdmin || auth.user?.role === 'admin');
@@ -48,6 +50,19 @@ const typeLabelMap: Record<string, string> = {
   liveqr: '活码',
 };
 
+// P0：最近链接可复制、可跳统计
+function shortUrlOf(row: LinkItem): string {
+  if (row.PublicURL) return row.PublicURL;
+  const d = domains.value.find((item) => item.ID === row.EntryDomainID && item.Status === 'active');
+  return d ? `${d.Scheme}://${d.Host}/${encodeURIComponent(row.Code)}` : '';
+}
+async function copyUrl(row: LinkItem) {
+  const url = shortUrlOf(row);
+  if (!url) { message.error('入口域不可用'); return; }
+  try { await navigator.clipboard.writeText(url); message.success(`已复制 ${url}`); }
+  catch { message.error('复制失败，请手动复制'); }
+}
+
 const columns: DataTableColumns<LinkItem> = [
   { title: '短码', key: 'Code', width: 120, render: (row) => h('code', {}, row.Code) },
   { title: '名称', key: 'Title', render: (row) => row.Title || h('span', { class: 'muted' }, '未命名') },
@@ -61,9 +76,19 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '状态',
     key: 'Status',
-    width: 100,
+    width: 90,
     render: (row) =>
       h(NTag, { type: statusTypeMap[row.Status] || 'default', size: 'small', round: true }, () => statusLabelMap[row.Status] || row.Status),
+  },
+  {
+    title: '',
+    key: 'actions',
+    width: 90,
+    render: (row) =>
+      h('div', { style: 'display:flex;gap:2px;align-items:center' }, [
+        h(NButton, { text: true, size: 'small', title: '复制短链', onClick: () => copyUrl(row) }, { icon: () => h(NIcon, { size: 15 }, { default: () => h(Copy) }) }),
+        h(NButton, { text: true, size: 'small', title: '查看统计', onClick: () => router.push({ path: '/stats', query: { linkId: String(row.ID) } }) }, { icon: () => h(NIcon, { size: 15 }, { default: () => h(BarChart3) }) }),
+      ]),
   },
 ];
 

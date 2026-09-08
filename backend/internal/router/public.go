@@ -57,14 +57,17 @@ func dispatchByDomainType(deps Dependencies, links *service.LinkService, landing
 				writeResolveError(c, err, pages)
 				return
 			}
-			recorder.RecordAsync(service.AccessEvent{
-				LinkID:     result.Link.ID,
-				IP:         c.ClientIP(),
-				UserAgent:  c.Request.UserAgent(),
-				Referer:    c.Request.Referer(),
-				VisitedAt:  deps.Config.Now(),
-				ViaTransit: false,
-			})
+			// 活码只由落地域渲染时记一次访问日志（此处 302 若也记则 PV 双计）。
+			if result.Link.Type != model.LinkTypeLiveQR {
+				recorder.RecordAsync(service.AccessEvent{
+					LinkID:     result.Link.ID,
+					IP:         c.ClientIP(),
+					UserAgent:  c.Request.UserAgent(),
+					Referer:    c.Request.Referer(),
+					VisitedAt:  deps.Config.Now(),
+					ViaTransit: false,
+				})
+			}
 			c.Redirect(result.Status, result.TargetURL)
 		case model.DomainTypeTransit:
 			// 中转域：解析目标后渲染中转页（不再返回 JSON 占位）。

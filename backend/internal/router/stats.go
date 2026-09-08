@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/response"
 	"gravitylink/backend/internal/service"
 )
@@ -59,6 +60,19 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		start, end := parseDateRange(c)
 		data, err := stats.Device(c.Request.Context(), linkID, start, end)
 		writeStatResult(c, data, err)
+	})
+
+	// P1：重置链接统计（危险操作，管理员专用；access_logs 原始日志保留）
+	group.POST("/stats/:link_id/reset", middleware.RequireRole("admin"), func(c *gin.Context) {
+		linkID, ok := parseLinkID(c)
+		if !ok {
+			return
+		}
+		if err := stats.Reset(c.Request.Context(), linkID); err != nil {
+			response.Error(c, http.StatusInternalServerError, 5000, "重置统计失败")
+			return
+		}
+		writeStatResult(c, gin.H{"reset": true}, nil)
 	})
 }
 

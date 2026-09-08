@@ -20,6 +20,7 @@ import (
 var (
 	ErrLandingNotFound = errors.New("landing page not found")
 	ErrInvalidTemplate = errors.New("invalid landing template")
+	ErrLandingInUse    = errors.New("landing page in use")
 )
 
 const defaultThemeColor = "#0f766e"
@@ -89,12 +90,30 @@ func (s *LandingService) Get(ctx context.Context, id uint64) (model.LandingPage,
 	return page, err
 }
 
+// Delete 软删落地页；仍被未删除链接引用时拒绝，提示先解绑。
+func (s *LandingService) Delete(ctx context.Context, id uint64) error {
+	page, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&model.Link{}).
+		Where("landing_page_id = ?", page.ID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrLandingInUse
+	}
+	return s.db.WithContext(ctx).Delete(&page).Error
+}
+
 func (s *LandingService) Update(ctx context.Context, id uint64, input LandingInput) (model.LandingPage, error) {
 	page, err := s.Get(ctx, id)
 	if err != nil {
 		return page, err
 	}
-	if page.Template != "liveqr" || input.Template != page.Template || input.DomainID != page.DomainID || !json.Valid(input.Content) {
+	// 模板与落地域名创建后锁定；内容允许更新（P1：开放全部模板的编辑能力）
+	if input.Template != page.Template || input.DomainID != page.DomainID || !json.Valid(input.Content) {
 		return page, ErrInvalidTemplate
 	}
 	updated, err := landingFromInput(input)
@@ -113,6 +132,19 @@ func (s *LandingService) Preview(ctx context.Context, id uint64) (string, error)
 	if err != nil {
 		return "", err
 	}
+	return s.renderPreviewOf(page)
+}
+
+// PreviewDraft 按未落库的表单内容渲染预览，供编辑中实时查看。
+func (s *LandingService) PreviewDraft(input LandingInput) (string, error) {
+	page, err := landingFromInput(input)
+	if err != nil {
+		return "", err
+	}
+	return s.renderPreviewOf(page)
+}
+
+func (s *LandingService) renderPreviewOf(page model.LandingPage) (string, error) {
 	switch page.Template {
 	case "liveqr":
 		return s.renderLiveQRPage(page, "")

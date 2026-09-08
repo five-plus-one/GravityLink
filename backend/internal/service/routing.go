@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -14,6 +16,23 @@ import (
 )
 
 var ErrNoRoutingTarget = errors.New("no routing target available")
+
+// validRoutingTargetURL 活码二维码目标校验：允许 http(s) 绝对地址或站内素材相对路径。
+// 与 router 层 validTargetURL 口径一致，避免同一张图两种存储形态。
+func validRoutingTargetURL(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || len(trimmed) > 2048 {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "/uploads/") && !strings.Contains(trimmed, "..") && !strings.ContainsAny(trimmed, "?#\\") {
+		return true
+	}
+	parsed, err := url.ParseRequestURI(trimmed)
+	if err != nil {
+		return false
+	}
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
 
 type RoutingService struct {
 	db    *gorm.DB
@@ -58,8 +77,9 @@ func (s *RoutingService) CreateStrategy(tx *gorm.DB, linkID uint64, input *Strat
 
 	targets := make([]model.RoutingTarget, 0, len(input.Targets))
 	for _, item := range input.Targets {
-		if err := validateTargetURL(item.TargetURL); err != nil {
-			return err
+		// 活码目标允许站内素材相对路径（/uploads/...），与 TargetManager 口径一致
+		if !validRoutingTargetURL(item.TargetURL) {
+			return ErrInvalidTargetURL
 		}
 		weight := item.Weight
 		if weight == 0 {

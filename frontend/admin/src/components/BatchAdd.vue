@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue';
-import {NButton,NModal,NInput,NSelect,NInputNumber,NAlert,NFormItem} from 'naive-ui';
+import {NButton,NModal,NInput,NSelect,NInputNumber,NAlert,NFormItem,useMessage} from 'naive-ui';
 import {request,createLink,type DomainItem} from '../api';
 import {parseURLBatch} from './batch';
 const props=defineProps<{linkId?:number;domains?:DomainItem[]}>();
 const emit=defineEmits<{saved:[]}>();
+const message=useMessage();
 const show=ref(false),text=ref(''),busy=ref(false),submitted=ref(false),error=ref('');
 const domain=ref<number|null>(null),limit=ref<number|null>(null);
 const results=ref<{line:number;result:string}[]>([]);
 const rows=computed(()=>parseURLBatch(text.value));
 const valid=computed(()=>rows.value.length>0&&rows.value.length<=100&&rows.value.every(r=>!r.error)&&(!!props.linkId||!!domain.value));
+const okResults=computed(()=>results.value.filter(r=>!r.result.startsWith('未确认成功')));
 function open(){show.value=true;text.value='';submitted.value=false;results.value=[];error.value='';}
+async function copyOne(v:string){try{await navigator.clipboard.writeText(v);message.success('已复制');}catch{message.error('复制失败，请手动复制');}}
+async function copyAll(){
+ if(!okResults.value.length)return;
+ try{await navigator.clipboard.writeText(okResults.value.map(r=>r.result).join('\n'));message.success(`已复制 ${okResults.value.length} 条短链`);}catch{message.error('复制失败，请手动复制');}
+}
 async function submit(){
  if(!valid.value||busy.value||submitted.value)return;
  busy.value=true;submitted.value=true;error.value='';
@@ -39,9 +46,18 @@ async function submit(){
   <p>共 {{rows.length}} 条{{rows.length>100?'，超过 100 条上限':''}}</p>
   <div class="preview"><div v-for="r in rows" :key="r.line" :class="{invalid:r.error}">第 {{r.line}} 行：{{r.error||r.url}}</div></div>
   <NAlert v-if="error" type="error">{{error}}</NAlert>
-  <div v-if="results.length" class="preview"><div v-for="r in results" :key="r.line">第 {{r.line}} 行：{{r.result}}</div></div>
+  <div v-if="results.length" class="preview">
+  <div v-for="r in results" :key="r.line" class="result-row">
+   <span>第 {{r.line}} 行：{{r.result}}</span>
+   <button v-if="!r.result.startsWith('未确认成功')" class="copy-mini" @click="copyOne(r.result)">复制</button>
+  </div>
+  <div v-if="okResults.length" style="margin-top:8px"><NButton size="tiny" @click="copyAll">复制全部（{{okResults.length}} 条）</NButton></div>
+ </div>
   <NButton type="primary" :loading="busy" :disabled="!valid||submitted" @click="submit">{{submitted?'本批次已提交':'确认添加'}}</NButton>
   <NButton :disabled="busy" @click="show=false">关闭</NButton>
  </NModal>
 </template>
-<style scoped>.preview{max-height:230px;overflow:auto;padding:12px;background:#f5f8fd;border-radius:10px;margin:12px 0;overflow-wrap:anywhere}.invalid{color:#c53030}</style>
+<style scoped>.preview{max-height:230px;overflow:auto;padding:12px;background:#f5f8fd;border-radius:10px;margin:12px 0;overflow-wrap:anywhere}.invalid{color:#c53030}
+.result-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.copy-mini{border:1px solid #d6e1ea;background:#fff;color:#0f766e;border-radius:5px;padding:2px 8px;font-size:11px;cursor:pointer;flex-shrink:0}
+.copy-mini:hover{background:#e6f3f1}</style>

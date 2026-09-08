@@ -206,6 +206,18 @@ export async function createLandingPage(payload: CreateLandingPagePayload): Prom
   });
 }
 
+export async function deleteLandingPage(id: number): Promise<void> {
+  await request<{ deleted: boolean }>(`/api/v1/landing-pages/${id}`, { method: 'DELETE' });
+}
+
+export async function previewLandingDraft(payload: CreateLandingPagePayload): Promise<string> {
+  const result = await request<{ html: string }>('/api/v1/landing-pages/preview-draft', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return result.html;
+}
+
 export async function getSummaryStats(linkId: number): Promise<SummaryStats> {
   return request<SummaryStats>(`/api/v1/stats/${linkId}/summary`);
 }

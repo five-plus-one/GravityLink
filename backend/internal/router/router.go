@@ -21,6 +21,7 @@ type Dependencies struct {
 	Redis       *redis.Client
 	Logger      *slog.Logger
 	ResetSystem func(context.Context, uint64) error
+	Notifier    *service.Notifier
 }
 
 func New(deps Dependencies) *gin.Engine {
@@ -30,6 +31,10 @@ func New(deps Dependencies) *gin.Engine {
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
+
+	if deps.Notifier == nil {
+		deps.Notifier = service.NewNotifier(deps.DB, deps.Redis)
+	}
 
 	domainCache := service.NewDomainCache(deps.DB)
 	if err := domainCache.Load(); err != nil {
