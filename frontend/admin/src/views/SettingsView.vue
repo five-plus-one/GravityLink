@@ -100,11 +100,14 @@ async function save() {
       'public.base_url': form.publicBaseURL.trim(),
       'public.home.title': form.homeTitle,
       'public.home.message': form.homeMessage,
+      'public.home.redirect_url': form.homeRedirectUrl.trim(),
       'public.not_found.title': form.notFoundTitle,
       'public.not_found.message': form.notFoundMessage,
       'public.gone.title': form.goneTitle,
       'public.gone.message': form.goneMessage,
       'public.footer': form.footer,
+      'public.icp': form.icp.trim(),
+      'public.police_icp': form.policeIcp.trim(),
     });
     message.success('公开页面提示已更新');
   } catch (err) {
@@ -179,8 +182,17 @@ async function executeReset() {
             <NFormItem label="公开访问地址" class="span-2">
               <NInput v-model:value="form.publicBaseURL" placeholder="如 https://s.example.com 或 http://localhost:18080" />
             </NFormItem>
+            <NFormItem label="ICP 备案号（可选）">
+              <NInput v-model:value="form.icp" placeholder="如 苏ICP备2025155286号-1" />
+            </NFormItem>
+            <NFormItem label="公安联网备案号（可选）">
+              <NInput v-model:value="form.policeIcp" placeholder="如 苏公网安备 32050202001234号" />
+            </NFormItem>
             <NFormItem label="首页标题" class="span-2"><NInput v-model:value="form.homeTitle" /></NFormItem>
             <NFormItem label="首页说明" class="span-2"><NInput v-model:value="form.homeMessage" type="textarea" :rows="3" /></NFormItem>
+            <NFormItem label="首页自动跳转地址（可选）" class="span-2">
+              <NInput v-model:value="form.homeRedirectUrl" placeholder="填写后访问首页直接 302 跳转到此地址；留空则显示首页" />
+            </NFormItem>
             <NFormItem label="链接不存在标题" class="span-2"><NInput v-model:value="form.notFoundTitle" /></NFormItem>
             <NFormItem label="链接不存在说明" class="span-2"><NInput v-model:value="form.notFoundMessage" type="textarea" :rows="3" /></NFormItem>
             <NFormItem label="链接过期标题" class="span-2"><NInput v-model:value="form.goneTitle" /></NFormItem>
