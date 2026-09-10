@@ -170,7 +170,7 @@ function maskToken(t: string) { return t.length > 12 ? t.slice(0, 10) + '...' + 
         </div>
       </div>
     </template>
-    <NDataTable :columns="columns" :data="keys" :loading="loading" :pagination="{ pageSize: 20 }" :bordered="false" size="small">
+    <NDataTable :columns="columns" :data="keys" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="900" :bordered="false" size="small">
       <template #empty>
         <NEmpty description="尚未创建 API Key"><template v-if="canWrite" #extra><NButton type="primary" size="small" @click="openCreate">创建第一个 Key</NButton></template></NEmpty>
       </template>
@@ -222,4 +222,7 @@ function maskToken(t: string) { return t.length > 12 ? t.slice(0, 10) + '...' + 
 .copy-row{width:100%;display:flex;gap:8px;align-items:center;background:#f4f7f8;border:1px solid #e3eaed;border-radius:8px;padding:10px 12px}
 .row-label{flex-shrink:0;font-size:12px;color:#6b7f88;background:#fff;border:1px solid #e3eaed;border-radius:4px;padding:2px 8px}
 .row-val{flex:1;font-family:Consolas,Menlo,monospace;font-size:13px;word-break:break-all}
+@media (max-width: 640px) {
+  .form-row{grid-template-columns:1fr}
+}
 </style>

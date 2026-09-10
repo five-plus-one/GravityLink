@@ -14,6 +14,9 @@
     {{if .StatusText}}<div class="landing-status">{{.StatusText}}</div>{{end}}
     <footer class="landing-footer">
       {{.Footer}}
+      <div class="gravitylink-footer">
+        <a href="https://github.com/five-plus-one/GravityLink" target="_blank" rel="noopener noreferrer">Powered by GravityLink</a>
+      </div>
       {{if or .ICP .PoliceICP}}
       <div class="landing-beian">
         {{if .ICP}}<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{.ICP}}</a>{{end}}

@@ -146,3 +146,36 @@ code,
   --n-primary-color-hover: var(--color-primary-hover);
   --n-primary-color-pressed: var(--color-primary-pressed);
 }
+
+/* P2/P3 移动端全局适配：触控目标放大 + 字号调整 + 排班格/图例适配 */
+@media (max-width: 640px) {
+  /* P2：提高按钮触控目标面积（Naive UI tiny/small 按钮在移动端增大 padding） */
+  .n-button--tiny-type {
+    --n-height: 32px !important;
+    --n-padding: 0 10px !important;
+    font-size: 13px !important;
+  }
+  .n-button--small-type {
+    --n-height: 36px !important;
+    font-size: 14px !important;
+  }
+  /* P2：表格行高增大，减少误触 */
+  .n-data-table .n-data-table-th,
+  .n-data-table .n-data-table-td {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+  /* P3：移动端字号微调 */
+  body {
+    font-size: 15px;
+  }
+  /* P2：排班选择器嵌弹窗内时降为单列 */
+  .week-grid,
+  .schedule-grid {
+    grid-template-columns: 1fr !important;
+  }
+  /* P3：ECharts 饼图图例窄屏不换行 */
+  .echarts-legend-compact {
+    orient: 'horizontal' !important;
+  }
+}

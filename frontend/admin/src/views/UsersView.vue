@@ -167,7 +167,7 @@ async function setStatus(item: UserItem, status: 'active' | 'disabled') {
         </div>
       </template>
 
-      <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :bordered="false" size="small">
+      <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="700" :bordered="false" size="small">
         <template #empty>
           <NEmpty description="暂无账号">
             <template #icon><UsersIcon :size="32" /></template>

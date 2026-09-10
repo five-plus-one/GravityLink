@@ -330,7 +330,7 @@ function messageOf(err: unknown): string {
       尚未配置落地域名。请先到「域名」页面添加类型为「落地页」的域名。
     </NAlert>
 
-    <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :bordered="false" size="small">
+    <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="800" :bordered="false" size="small">
       <template #empty>
         <NEmpty description="尚未创建落地页">
           <template v-if="canWrite && landingDomainOptions.length" #extra>

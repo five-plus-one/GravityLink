@@ -752,4 +752,13 @@ function messageOf(err: unknown): string {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .span-2, .span-4 {
+    grid-column: span 1;
+  }
+}
 </style>

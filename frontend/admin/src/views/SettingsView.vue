@@ -264,7 +264,7 @@ async function executeReset() {
       </NCard>
     </template>
 
-    <NModal v-model:show="showResetDialog" preset="card" title="确认清除所有配置" style="width: 520px" :mask-closable="false">
+    <NModal v-model:show="showResetDialog" preset="card" title="确认清除所有配置" style="width: min(520px, 94vw)" :mask-closable="false">
       <NAlert type="warning" :show-icon="true" style="margin-bottom: var(--space-4)">
         业务数据会保留，但所有用户授权和登录会话将失效。此操作会让管理端立即退出并进入首次配置。
       </NAlert>

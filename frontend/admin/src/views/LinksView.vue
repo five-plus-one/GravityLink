@@ -547,6 +547,7 @@ function removeTarget(index: number) {
       :data="filtered"
       :loading="loading"
       :pagination="{ pageSize: 20, showSizePicker: true, pageSizes: [10, 20, 50, 100] }"
+      :scroll-x="1100"
       :bordered="false"
       size="small"
     >

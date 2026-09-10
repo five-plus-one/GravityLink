@@ -81,4 +81,8 @@ table{width:100%;border-collapse:collapse;margin:20px 0}td,th{text-align:left;pa
 .pill.green{background:#dcfce7;color:#15803d}.pill.amber{background:#fef3c7;color:#b45309}.pill.gray{background:#eef2f4;color:#6b7f88}
 .muted{color:#94a3b8}
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}section{background:#f5f8fd;padding:20px;border-radius:16px}
+@media (max-width: 640px) {
+  .fields{grid-template-columns:1fr}
+  td,th{padding:8px 10px}
+}
 </style>

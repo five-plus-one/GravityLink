@@ -176,12 +176,12 @@ async function createProject() {
       </template>
       <NTabs type="line">
         <NTabPane name="items" tab="卡密列表">
-          <NDataTable :columns="projectItemCols" :data="items" :loading="itemsLoading" :pagination="itemsTotal>50?{pageSize:50,onChange:(p)=>{itemPage=p-1;loadItems()}}:false" :bordered="false" size="small" />
+          <NDataTable :columns="projectItemCols" :data="items" :loading="itemsLoading" :pagination="itemsTotal>50?{pageSize:50,onChange:(p)=>{itemPage=p-1;loadItems()}}:false" :scroll-x="800" :bordered="false" size="small" />
           <p v-if="itemsTotal" style="font-size:12px;color:#6b7f88;margin-top:8px">共 {{ itemsTotal }} 条</p>
         </NTabPane>
         <NTabPane name="issuances" tab="提取记录">
           <NButton size="small" @click="loadIssuances" style="margin-bottom:12px">刷新记录</NButton>
-          <NDataTable :columns="issuanceCols" :data="issuances" :loading="issLoading" :bordered="false" size="small" />
+          <NDataTable :columns="issuanceCols" :data="issuances" :loading="issLoading" :scroll-x="600" :bordered="false" size="small" />
           <p v-if="issuTotal" style="font-size:12px;color:#6b7f88;margin-top:8px">共 {{ issuTotal }} 条</p>
         </NTabPane>
       </NTabs>

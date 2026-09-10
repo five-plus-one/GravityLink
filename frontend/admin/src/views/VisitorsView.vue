@@ -230,6 +230,7 @@ function handleSearch() {
         :columns="columns"
         :data="items"
         :loading="loading"
+        :scroll-x="900"
         :bordered="false"
         size="small"
         :pagination="{

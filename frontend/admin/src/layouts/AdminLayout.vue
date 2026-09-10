@@ -23,7 +23,10 @@ const router = useRouter();
 const auth = useAuthStore();
 const message = useMessage();
 
-const collapsed = ref(false);
+// P0 移动端修复：按屏宽初始化折叠态（≤768px 时默认收起），加 breakpoint + transform + scrim
+const isMobileView = ref(window.innerWidth <= 768);
+window.addEventListener('resize', () => { isMobileView.value = window.innerWidth <= 768; });
+const collapsed = ref(isMobileView.value);
 
 const nav = [
   { key: 'dashboard', label: '概览', icon: LayoutDashboard, to: '/', adminOnly: false },
@@ -89,16 +92,23 @@ async function handleUserMenu(key: string) {
 function handleMenuSelect(key: string) {
   const target = visibleNav.value.find((item) => item.key === key);
   if (target) router.push(target.to);
+  // P0 移动端：点击菜单后自动收起侧栏
+  if (isMobileView.value) collapsed.value = true;
 }
 </script>
 
 <template>
+  <!-- P0 移动端遮罩：sider 展开时显示，点击收起 -->
+  <Transition name="fade">
+    <div v-if="isMobileView && !collapsed" class="mobile-scrim" @click="collapsed = true" />
+  </Transition>
   <NLayout has-sider class="admin-shell">
     <NLayoutSider
       v-model:collapsed="collapsed"
       :width="232"
       :collapsed-width="64"
-      collapse-mode="width"
+      :collapse-mode="isMobileView ? 'transform' : 'width'"
+      breakpoint="768"
       show-trigger
       class="admin-sider"
     >
@@ -163,6 +173,12 @@ function handleMenuSelect(key: string) {
           </div>
         </RouterView>
       </main>
+      <footer class="admin-footer">
+        <a href="https://github.com/five-plus-one/GravityLink" target="_blank" rel="noopener noreferrer" class="footer-link">
+          <span class="brand-mark footer-mark">G</span>
+          <span>GravityLink</span>
+        </a>
+      </footer>
     </NLayout>
   </NLayout>
 </template>
@@ -403,6 +419,53 @@ function handleMenuSelect(key: string) {
     position: fixed !important;
     z-index: 100;
     height: 100%;
+    top: 0;
+    left: 0;
+    box-shadow: 4px 0 24px rgba(16, 42, 51, 0.16);
+  }
+}
+
+/* P0 移动端遮罩层 */
+.mobile-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(16, 42, 51, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+/* GravityLink 页脚 */
+.admin-footer {
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  transition: color 0.15s;
+}
+.footer-link:hover {
+  color: var(--color-primary);
+}
+.footer-mark {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+
+/* 移动端页脚紧凑 */
+@media (max-width: 767px) {
+  .admin-footer {
+    padding: var(--space-3) var(--space-4);
   }
 }
 </style>
