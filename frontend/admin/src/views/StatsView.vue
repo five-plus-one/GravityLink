@@ -298,83 +298,81 @@ async function doReset() {
         </div>
       </template>
 
-      <template>
-        <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: var(--space-5)">
-          <NGridItem span="4 s:2 m:1">
-            <NCard size="small" embedded>
-              <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-              <NStatistic v-else label="累计 PV" :value="summary?.total_pv ?? 0" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="4 s:2 m:1">
-            <NCard size="small" embedded>
-              <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-              <NStatistic v-else label="累计 UV" :value="summary?.total_uv ?? 0" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="4 s:2 m:1">
-            <NCard size="small" embedded>
-              <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-              <NStatistic v-else label="今日 PV" :value="summary?.today_pv ?? 0" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="4 s:2 m:1">
-            <NCard size="small" embedded>
-              <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-              <NStatistic v-else label="今日 UV" :value="summary?.today_uv ?? 0" />
-            </NCard>
-          </NGridItem>
-        </NGrid>
+      <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: var(--space-5)">
+        <NGridItem span="4 s:2 m:1">
+          <NCard size="small" embedded>
+            <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
+            <NStatistic v-else label="累计 PV" :value="summary?.total_pv ?? 0" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="4 s:2 m:1">
+          <NCard size="small" embedded>
+            <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
+            <NStatistic v-else label="累计 UV" :value="summary?.total_uv ?? 0" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="4 s:2 m:1">
+          <NCard size="small" embedded>
+            <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
+            <NStatistic v-else label="今日 PV" :value="summary?.today_pv ?? 0" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="4 s:2 m:1">
+          <NCard size="small" embedded>
+            <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
+            <NStatistic v-else label="今日 UV" :value="summary?.today_uv ?? 0" />
+          </NCard>
+        </NGridItem>
+      </NGrid>
 
-        <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
-          <NGridItem span="2 m:1">
-            <NCard title="每日访问（近 30 天）" size="small" embedded>
-              <VChart :option="dailyOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="2 m:1">
-            <NCard title="今日 24 小时分布" size="small" embedded>
-              <VChart :option="hourlyOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="2 m:1">
-            <NCard title="设备分布" size="small" embedded>
-              <NEmpty
-                v-if="(deviceStats?.device?.length ?? 0) === 0"
-                description="暂无数据，今日访问将在次日汇总"
-                style="padding: 60px 0"
-              />
-              <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="2 m:1">
-            <NCard title="操作系统" size="small" embedded>
-              <NEmpty
-                v-if="(deviceStats?.os?.length ?? 0) === 0"
-                description="暂无数据，今日访问将在次日汇总"
-                style="padding: 60px 0"
-              />
-              <VChart v-else :option="osOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="2 m:1">
-            <NCard title="浏览器" size="small" embedded>
-              <NEmpty
-                v-if="(deviceStats?.browser?.length ?? 0) === 0"
-                description="暂无数据，今日访问将在次日汇总"
-                style="padding: 60px 0"
-              />
-              <VChart v-else :option="browserOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-          <NGridItem span="2 m:1">
-            <NCard title="地域分布" size="small" embedded>
-              <NEmpty v-if="geo.length === 0" description="暂无数据" style="padding: 60px 0" />
-              <VChart v-else :option="geoOption" autoresize style="height: 320px" />
-            </NCard>
-          </NGridItem>
-        </NGrid>
-      </template>
+      <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
+        <NGridItem span="2 m:1">
+          <NCard title="每日访问（近 30 天）" size="small" embedded>
+            <VChart :option="dailyOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="2 m:1">
+          <NCard title="今日 24 小时分布" size="small" embedded>
+            <VChart :option="hourlyOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="2 m:1">
+          <NCard title="设备分布" size="small" embedded>
+            <NEmpty
+              v-if="(deviceStats?.device?.length ?? 0) === 0"
+              description="暂无数据，今日访问将在次日汇总"
+              style="padding: 60px 0"
+            />
+            <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="2 m:1">
+          <NCard title="操作系统" size="small" embedded>
+            <NEmpty
+              v-if="(deviceStats?.os?.length ?? 0) === 0"
+              description="暂无数据，今日访问将在次日汇总"
+              style="padding: 60px 0"
+            />
+            <VChart v-else :option="osOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="2 m:1">
+          <NCard title="浏览器" size="small" embedded>
+            <NEmpty
+              v-if="(deviceStats?.browser?.length ?? 0) === 0"
+              description="暂无数据，今日访问将在次日汇总"
+              style="padding: 60px 0"
+            />
+            <VChart v-else :option="browserOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+        <NGridItem span="2 m:1">
+          <NCard title="地域分布" size="small" embedded>
+            <NEmpty v-if="geo.length === 0" description="暂无数据" style="padding: 60px 0" />
+            <VChart v-else :option="geoOption" autoresize style="height: 320px" />
+          </NCard>
+        </NGridItem>
+      </NGrid>
     </NCard>
   </div>
 </template>
