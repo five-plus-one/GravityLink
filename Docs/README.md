@@ -28,6 +28,14 @@
 | [features/statistics.md](features/statistics.md) | 统计系统规格 | ✅ 完成 |
 | [features/domain-management.md](features/domain-management.md) | 域名管理规格 | ✅ 完成 |
 
+## 运维与部署
+
+| 文档 | 说明 |
+|-----|------|
+| [../deploy/DEPLOY.md](../deploy/DEPLOY.md) | 服务器部署教程（外部 MySQL/Redis、Nginx 反代、备份） |
+
+预构建镜像：`5plus1/gravitylink:latest`。本地全栈构建与外部库部署 compose 文件见 `deploy/`。
+
 ## 开发阶段
 
 - **Phase 1A**：后端最小骨架（Go 初始化、健康检查、配置、MySQL/Redis、docker-compose）
@@ -37,6 +45,17 @@
 - **Phase 2**：核心功能（渠道码、群活码、落地页、域名路由）
 - **Phase 3**：统计看板（多维聚合、ECharts 图表）
 - **Phase 4**：开源收尾（迁移工具、docker-compose、README）
-- **Phase 5**：UI/UX 全量重构（Naive UI + Pinia、路由化、设计令牌）
+- **Phase 5**：UI/UX 全量重构（Naive UI + Pinia、路由化、设计令牌、五模板落地页）
+- **Phase 6**：统计闭环与工程加固（StatFlusher、UA 解析、路由懒加载、关键路径测试）
+- **Phase 7**：管理端产品化（概览看板、个人中心、交互深化、运行态恢复）
+- **Phase 8**：客服码 / 卡密分发 / 开放 API / 分享卡片 / 访客记录 / 旧版兼容与部署
 
-当前阶段：**Phase 8 收尾完成（客服码/卡密/开放 API + 落地页模板闭环）**，见 [workspace/status.md](../workspace/status.md)。
+当前阶段：**Phase 8 收尾 + 旧版迁移兼容 + 服务器部署**，见 [workspace/status.md](../workspace/status.md)。
+
+## 补充资料
+
+| 文档 | 说明 |
+|-----|------|
+| [acceptance-2026-09-07.md](acceptance-2026-09-07.md) | 2026-09-07 验收记录 |
+| [legacy-comparison-2026-09-07.md](legacy-comparison-2026-09-07.md) | 旧版功能对照与差距清单 |
+| [operations-completion.md](operations-completion.md) | 批量操作、群码维护、启动恢复等补齐说明 |
