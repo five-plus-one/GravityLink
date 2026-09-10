@@ -3,7 +3,6 @@ package router
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"gravitylink/backend/internal/model"
@@ -245,15 +244,12 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 	})
 }
 
-// jsString 将字符串转为安全的 JavaScript 字符串字面量（含引号）。
-func jsString(s string) template.JS {
-	b, _ := json.Marshal(s)
-	return template.JS(b)
-}
-
-var shareTemplate = template.Must(template.New("share").Funcs(template.FuncMap{"js": jsString}).Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><meta name="description" content="{{.Description}}"><style>body{font-family:system-ui;background:#eff5ff;color:#17243b;padding:24px}main{max-width:480px;margin:8vh auto;background:white;border-radius:24px;padding:32px}img{width:100px;height:100px;object-fit:cover;border-radius:16px}p{line-height:1.7;color:#64748b}a{display:block;background:#2879f8;color:white;padding:14px;text-align:center;border-radius:12px;text-decoration:none}</style><main><img src="{{.ImageURL}}" alt="卡片封面"><h1>{{.Title}}</h1><p>{{.Description}}</p><a href="{{.TargetURL}}" rel="noopener noreferrer">查看内容</a><p id="status">在微信中打开后，可通过右上角菜单分享。</p></main><script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script><script>
-const pageUrl=location.href.split('#')[0];
-const shareLink=location.origin+location.pathname+'/go';
-const data={title:{{js .Title}},desc:{{js .Description}},imgUrl:{{js .ImageURL}},link:shareLink};
-if(/MicroMessenger/i.test(navigator.userAgent)) fetch(location.pathname+'/signature?url='+encodeURIComponent(pageUrl)).then(r=>r.json()).then(r=>{if(r.code!==0)throw Error(r.message);wx.config({...r.data,debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']});wx.ready(()=>{wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(()=>document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。')}).catch(()=>document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。');
+var shareTemplate = template.Must(template.New("share").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><meta name="description" content="{{.Description}}"><style>body{font-family:system-ui;background:#eff5ff;color:#17243b;padding:24px}main{max-width:480px;margin:8vh auto;background:white;border-radius:24px;padding:32px}img{width:100px;height:100px;object-fit:cover;border-radius:16px}p{line-height:1.7;color:#64748b}a{display:block;background:#2879f8;color:white;padding:14px;text-align:center;border-radius:12px;text-decoration:none}</style><main id="card" data-title="{{.Title}}" data-desc="{{.Description}}" data-img="{{.ImageURL}}"><img src="{{.ImageURL}}" alt="卡片封面"><h1>{{.Title}}</h1><p>{{.Description}}</p><a href="{{.TargetURL}}" rel="noopener noreferrer">查看内容</a><p id="status">在微信中打开后，可通过右上角菜单分享。</p></main><script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script><script>
+(function(){
+var el=document.getElementById('card');
+var pageUrl=location.href.split('#')[0];
+var shareLink=location.origin+location.pathname+'/go';
+var data={title:el.dataset.title||'',desc:el.dataset.desc||'',imgUrl:el.dataset.img||'',link:shareLink};
+if(/MicroMessenger/i.test(navigator.userAgent)) fetch(location.pathname+'/signature?url='+encodeURIComponent(pageUrl)).then(function(r){return r.json()}).then(function(r){if(r.code!==0)throw Error(r.message);wx.config(Object.assign({},r.data,{debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']}));wx.ready(function(){wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(function(){document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。'})}).catch(function(){document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。'});
+})();
 </script></html>`))
