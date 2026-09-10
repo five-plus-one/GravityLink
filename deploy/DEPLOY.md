@@ -45,8 +45,8 @@ services:
       SETUP_DEFAULT_REDIS_HOST: your-redis-host
       TZ: Asia/Shanghai
     ports:
-      - "8080:8080"
-      - "8081:8081"
+      - "18080:8080"
+      - "18081:8081"
     volumes:
       - gravitylink_data:/data
 
@@ -67,17 +67,17 @@ volumes:
 
 | 端口 | 用途 | 是否需要对外 |
 |------|------|-------------|
-| 8080 | 公网短链接服务 | 是（用户访问短链） |
-| 8081 | 管理后台 | 建议仅内网或加防火墙 |
+| 18080 | 公网短链接服务 | 是（用户访问短链） |
+| 18081 | 管理后台 | 建议仅内网或加防火墙 |
 
 ## 第三步：配置防火墙
 
 ```bash
 # 开放公网短链接端口
-sudo ufw allow 8080/tcp
+sudo ufw allow 18080/tcp
 
 # 管理后台建议仅限内网访问，或通过 Nginx 反代 + HTTPS
-# sudo ufw allow from your-ip to any port 8081
+# sudo ufw allow from your-ip to any port 18081
 ```
 
 ## 第四步：启动服务
@@ -103,7 +103,7 @@ gravitylink admin frontend starting addr=:8081
 
 ## 第五步：初始化系统
 
-打开浏览器访问 `http://服务器IP:8081`，进入初始化向导。
+打开浏览器访问 `http://服务器IP:18081`，进入初始化向导。
 
 ### 步骤 5.1：连接数据服务
 
@@ -147,7 +147,7 @@ gravitylink admin frontend starting addr=:8081
 ### 步骤 5.3：确认并启用
 
 - 确认 MySQL、Redis、管理员信息无误
-- 填写「公开访问地址」：如 `http://你的域名:8080` 或 `http://服务器IP:8080`
+- 填写「公开访问地址」：如 `http://你的域名:8080` 或 `http://服务器IP:18080`
 - 点击「完成初始化」
 
 初始化完成后系统自动进入管理后台。
@@ -175,7 +175,7 @@ server {
     ssl_certificate_key /path/to/key.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:18080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -195,7 +195,7 @@ server {
     ssl_certificate_key /path/to/key.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:8081;
+        proxy_pass http://127.0.0.1:18081;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -264,7 +264,7 @@ mysqldump -h your-mysql-host -u gravitylink -p gravitylink > gravitylink-$(date 
 | 容器启动失败 | `docker compose logs gravitylink` |
 | 初始化时 MySQL 连不上 | 确认 MySQL 允许来自容器 IP 的连接（`bind-address` 和用户授权） |
 | 短链访问 404 | 检查域名是否已在「域名」页面添加且状态为 active |
-| 管理后台白屏 | 硬刷新（Ctrl+Shift+R），检查 8081 端口是否可达 |
+| 管理后台白屏 | 硬刷新（Ctrl+Shift+R），检查 18081 端口是否可达 |
 | 端口被占用 | 修改 compose 中的端口映射，如 `"18080:8080"` |
 
 ### MySQL 远程连接授权

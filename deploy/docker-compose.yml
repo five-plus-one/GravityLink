@@ -11,7 +11,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请设置 MYSQL_PASSWORD}
       TZ: Asia/Shanghai
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_PORT:-13306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-16379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -50,8 +50,8 @@ services:
       TZ: Asia/Shanghai
       GEO_DB_PATH: /data/ip2region.xdb
     ports:
-      - "${APP_PORT:-8080}:8080"
-      - "${ADMIN_PORT:-8081}:8081"
+      - "${APP_PORT:-18080}:8080"
+      - "${ADMIN_PORT:-18081}:8081"
     volumes:
       - gravitylink_data:/data
       - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro

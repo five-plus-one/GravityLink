@@ -52,8 +52,8 @@ services:
       TZ: Asia/Shanghai
       GEO_DB_PATH: /data/ip2region.xdb
     ports:
-      - "${APP_PORT:-8080}:8080"
-      - "${ADMIN_PORT:-8081}:8081"
+      - "${APP_PORT:-18080}:8080"
+      - "${ADMIN_PORT:-18081}:8081"
     volumes:
       - gravitylink_data:/data
     depends_on:
