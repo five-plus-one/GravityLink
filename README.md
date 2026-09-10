@@ -24,7 +24,7 @@ English overview is included below.
 ### 统计与运营
 
 - **实时计数**：Redis 热路径计数，异步落盘 MySQL 聚合表。
-- **多维统计**：PV / UV、按天 / 按小时、设备 / OS / 浏览器、地域（ip2region，可选）。
+- **多维统计**：PV / UV、按天 / 按小时、设备 / OS / 浏览器、地域（ip2region，镜像内置）。
 - **访客记录**：支持按链接、日期、关键词筛选明细。
 - **看板**：管理端 ECharts 趋势图、分布图与单链接快览。
 
@@ -49,7 +49,7 @@ English overview is included below.
 | 前端 | Vue 3、TypeScript、Vite、Naive UI、Pinia、ECharts |
 | 存储 | MySQL 8、Redis 7 |
 | 部署 | Docker / Docker Compose、预构建镜像 `5plus1/gravitylink` |
-| 可选 | ip2region（访客地域）、Logto（企业 SSO） |
+| 可选 | Logto（企业 SSO）；IP 地域库已随镜像内置 |
 
 ## 快速启动
 
@@ -136,8 +136,8 @@ curl -I -H "Host: go.demo.localhost" http://127.0.0.1:18080/demo
 1. **改掉默认密码**：至少修改 `deploy/.env` 中的 `MYSQL_PASSWORD`。
 2. **管理端不直接暴露公网**：`18081` 仅内网，或反代后加访问控制。
 3. **TLS 与域名**：入口 / 落地域名反代到 `APP_PORT`，管理域名反代到 `ADMIN_PORT`。
-4. **数据备份**：备份 MySQL 业务库与 Docker 卷 `gravitylink_data`（配置、素材、可选 ip2region.xdb）。
-5. **地域解析（可选）**：下载 [ip2region](https://github.com/lionsoul2014/ip2region) 的 `ip2region.xdb` 放入 `/data`。
+4. **数据备份**：备份 MySQL 业务库与 Docker 卷 `gravitylink_data`（配置、素材）。
+5. **地域解析**：镜像已内置 [ip2region](https://github.com/lionsoul2014/ip2region) IPv4 库，默认启用。
 
 Nginx 反代示例与故障排查见 [deploy/DEPLOY.md](deploy/DEPLOY.md)。
 
@@ -203,7 +203,7 @@ GravityLink is a self-hosted Go + Vue 3 link management system for short links, 
 - Landing templates: liveqr, redirect_notice, custom, kf, kami.
 - WeChat share cards with JS-SDK signing and optional official-account config checks.
 - Open API for programmatic short-link creation (Bearer or HMAC-SHA256).
-- Redis real-time counters flushed into MySQL analytics (PV/UV, hourly, device, optional geo via ip2region).
+- Redis real-time counters flushed into MySQL analytics (PV/UV, hourly, device, geo via bundled ip2region).
 - Logto OIDC or local bcrypt admin, RBAC, and a first-run setup wizard.
 
 ### Quick start

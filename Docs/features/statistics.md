@@ -72,15 +72,15 @@ UA → 设备/OS/浏览器；IP → 国家/省份/城市/ISP（未启用 IP 库�
 
 将 90 天前的 `access_logs` 记录移到 `access_logs_archive` 表（结构相同），然后从主表删除。
 
-## 地域解析（ip2region，可选启用）
+## 地域解析（ip2region，镜像内置）
 
 基于 [ip2region](https://github.com/lionsoul2014/ip2region) v3 离线库实现，零网络依赖：
 
 - 解析实现：`internal/service/geo.go`（xdb 格式 `国家|省份|城市|ISP|iso-alpha2-code`，缺失字段以 `0` 占位归一为空）
 - 启用条件：环境变量 `GEO_DB_PATH` 指向 xdb 文件；未配置或文件加载失败时自动降级为不解析（记日志，不影响其他功能）
-- 容器部署：`docker-compose.yml` 已预设 `GEO_DB_PATH=/data/ip2region.xdb`，下载
-  [ip2region_v4.xdb](https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb)
-  放入 `/data` 卷并重启容器即生效
+- 容器部署：镜像构建时将 ip2region IPv4 库打入 `/app/ip2region.xdb`（在 `/data` 卷之外），
+  `docker-compose.yml` 默认 `GEO_DB_PATH=/app/ip2region.xdb`，开箱即用；
+  如需自定义库可挂载 xdb 并覆盖 `GEO_DB_PATH`
 - 数据流：`RecordAsync` 解析一次 → 写 `stat:geo:{link}:{day}` Hash（field `country|province`）与
   `access_logs` 的 country/province/city/isp 列 → StatFlusher 每分钟落盘 `stat_geo`
 

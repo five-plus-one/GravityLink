@@ -204,20 +204,21 @@ server {
 }
 ```
 
-## 第七步：IP 地理库（可选）
+## IP 地理库（默认已启用）
 
-下载 ip2region.xdb 并放入数据卷，可启用访客地域解析：
+镜像构建时已内置 ip2region IPv4 库（`/app/ip2region.xdb`），`GEO_DB_PATH` 默认指向该路径。  
+部署后访客地域直接可用，无需手动复制文件。
 
-```bash
-# 下载
-wget https://github.com/lionsoul2014/ip2region/raw/master/data/ip2region.xdb
+可选：使用自定义库时，将 xdb 挂载进数据卷并覆盖环境变量：
 
-# 复制进容器数据卷
-docker cp ip2region.xdb gravitylink-gravitylink-1:/data/ip2region.xdb
-
-# 重启生效
-docker compose restart gravitylink
+```yaml
+environment:
+  GEO_DB_PATH: /data/ip2region.xdb
+volumes:
+  - ./ip2region.xdb:/data/ip2region.xdb:ro
 ```
+
+然后 `docker compose up -d` 重建容器即可。
 
 ---
 
@@ -291,4 +292,5 @@ FLUSH PRIVILEGES;
 数据持久化在 Docker 卷 `gravitylink_gravitylink_data` 中，包含：
 - 系统配置文件（`gravitylink.json`）
 - 上传的图片素材（`/uploads/`）
-- IP 地理库（`ip2region.xdb`，可选）
+
+IP 地理库（`ip2region.xdb`）已打进应用镜像（`/app/ip2region.xdb`），不在数据卷中。
