@@ -4,6 +4,9 @@ GravityLink 是一个基于 Go + Vue 3 的短链接与活码管理系统，面�
 
 English overview is included below.
 
+![](./Docs/img/demo1.png)  
+![](./Docs/img/demo2.png)  
+
 ## 功能
 
 ### 链接与活码
