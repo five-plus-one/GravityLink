@@ -230,7 +230,7 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 		page := c.Query("url")
 		u, e := url.Parse(page)
 		cardPath := "/card/" + strconv.FormatUint(card.ID, 10)
-		if e != nil || u.Scheme != d.Scheme || u.Host != d.Host || (u.Path != cardPath && u.Path != cardPath+"/go") || u.User != nil {
+		if e != nil || u.Scheme != d.Scheme || u.Host != d.Host || u.Path != cardPath || u.User != nil {
 			fail(c)
 			return
 		}
@@ -245,6 +245,8 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 }
 
 var shareTemplate = template.Must(template.New("share").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><meta name="description" content="{{.Description}}"><style>body{font-family:system-ui;background:#eff5ff;color:#17243b;padding:24px}main{max-width:480px;margin:8vh auto;background:white;border-radius:24px;padding:32px}img{width:100px;height:100px;object-fit:cover;border-radius:16px}p{line-height:1.7;color:#64748b}a{display:block;background:#2879f8;color:white;padding:14px;text-align:center;border-radius:12px;text-decoration:none}</style><main><img src="{{.ImageURL}}" alt="卡片封面"><h1>{{.Title}}</h1><p>{{.Description}}</p><a href="{{.TargetURL}}" rel="noopener noreferrer">查看内容</a><p id="status">在微信中打开后，可通过右上角菜单分享。</p></main><script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script><script>
-const data={title:{{printf "%q" .Title}},desc:{{printf "%q" .Description}},imgUrl:{{printf "%q" .ImageURL}},link:location.origin+location.pathname+'/go'};
-if(/MicroMessenger/i.test(navigator.userAgent)) fetch(location.pathname+'/signature?url='+encodeURIComponent(data.link)).then(r=>r.json()).then(r=>{if(r.code!==0)throw Error(r.message);wx.config({...r.data,debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']});wx.ready(()=>{wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(()=>document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。')}).catch(()=>document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。');
+const pageUrl=location.href.split('#')[0];
+const shareLink=location.origin+location.pathname+'/go';
+const data={title:{{printf "%q" .Title}},desc:{{printf "%q" .Description}},imgUrl:{{printf "%q" .ImageURL}},link:shareLink};
+if(/MicroMessenger/i.test(navigator.userAgent)) fetch(location.pathname+'/signature?url='+encodeURIComponent(pageUrl)).then(r=>r.json()).then(r=>{if(r.code!==0)throw Error(r.message);wx.config({...r.data,debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']});wx.ready(()=>{wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(()=>document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。')}).catch(()=>document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。');
 </script></html>`))
