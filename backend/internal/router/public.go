@@ -2,7 +2,9 @@ package router
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -146,7 +148,7 @@ func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *ser
 	public.GET("/common/qun/", handleLegacyLanding("qid", true))
 	public.GET("/common/kf/", handleLegacyLanding("kid", true))
 	public.GET("/common/dwz/", handleLegacyLanding("key", false))
-	public.GET("/common/shareCard/", handleLegacyLanding("sid", true))
+	// /common/shareCard/ 已在上方单独注册（legacyShareCardRedirect）
 }
 
 // legacyIDRedirect 按旧版数字 ID 查找链接并重定向。
@@ -331,15 +333,33 @@ func legacyShareCardRedirect(c *gin.Context, deps Dependencies, pages *service.P
 
 // legacyShareCardPage 旧版分享卡片展示页：/common/shareCard/redirect/?sid={id}
 // 扫码进入，展示卡片信息并配置微信 JS-SDK 引导分享。
+// 分享出去的链接指向 /common/shareCard/?sid=xxx（被分享者打开后直接 302 跳转目标）。
 func legacyShareCardPage(c *gin.Context, deps Dependencies, pages *service.PublicPageService) {
 	card, ok := findShareCardByLegacyID(c, deps, pages)
 	if !ok {
 		return
 	}
+	// 分享链接指向跳转页，被分享者打开后直接 302 到目标
+	sid := c.Query("sid")
+	shareLink := "/common/shareCard/?sid=" + url.QueryEscape(sid)
+	data := map[string]interface{}{
+		"Title":       card.Title,
+		"Description": card.Description,
+		"ImageURL":    card.ImageURL,
+		"TargetURL":   card.TargetURL,
+		"ShareLink":   shareLink,
+	}
 	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	_ = shareTemplate.Execute(c.Writer, card)
+	_ = legacyShareTemplate.Execute(c.Writer, data)
 }
+
+// legacyShareTemplate 旧版分享卡片展示页模板。
+// 与新版 /card/:id 模板的区别：分享链接用 ShareLink 字段（指向跳转页），而非 location.href。
+var legacyShareTemplate = template.Must(template.New("legacyShare").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><meta name="description" content="{{.Description}}"><style>body{font-family:system-ui;background:#eff5ff;color:#17243b;padding:24px}main{max-width:480px;margin:8vh auto;background:white;border-radius:24px;padding:32px}img{width:100px;height:100px;object-fit:cover;border-radius:16px}p{line-height:1.7;color:#64748b}a{display:block;background:#2879f8;color:white;padding:14px;text-align:center;border-radius:12px;text-decoration:none}</style><main><img src="{{.ImageURL}}" alt="卡片封面"><h1>{{.Title}}</h1><p>{{.Description}}</p><a href="{{.TargetURL}}" rel="noopener noreferrer">查看内容</a><p id="status">在微信中打开后，可通过右上角菜单分享。</p></main><script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script><script>
+const data={title:{{printf "%q" .Title}},desc:{{printf "%q" .Description}},imgUrl:{{printf "%q" .ImageURL}},link:location.origin+{{printf "%q" .ShareLink}}};
+if(/MicroMessenger/i.test(navigator.userAgent)) fetch('/common/shareCard/redirect/signature?url='+encodeURIComponent(data.link)).then(r=>r.json()).then(r=>{if(r.code!==0)throw Error(r.message);wx.config({...r.data,debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']});wx.ready(()=>{wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(()=>document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。')}).catch(()=>document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。');
+</script></html>`))
 
 func findShareCardByLegacyID(c *gin.Context, deps Dependencies, pages *service.PublicPageService) (model.ShareCard, bool) {
 	sidStr := strings.TrimSpace(c.Query("sid"))
