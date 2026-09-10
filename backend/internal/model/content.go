@@ -18,6 +18,7 @@ type ShareCard struct {
 	TargetURL   string `gorm:"type:text"`
 	Status      string `gorm:"size:16"`
 	Visits      uint64
+	LegacyID    *uint64 `gorm:"index:idx_sharecard_legacy"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	PublicURL   string `gorm:"-"`

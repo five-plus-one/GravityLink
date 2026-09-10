@@ -40,11 +40,14 @@ const form = reactive({
   publicBaseURL: '',
   homeTitle: '链接服务正在运行',
   homeMessage: '这是短链接访问入口，请使用完整短链接访问目标内容。',
+  homeRedirectUrl: '',
   notFoundTitle: '链接不存在或已失效',
   notFoundMessage: '请检查链接是否完整，或联系链接提供方确认当前状态。',
   goneTitle: '链接已过期',
   goneMessage: '该链接已超过有效期，无法继续访问。',
   footer: 'GravityLink',
+  icp: '',
+  policeIcp: '',
   // 通知与检测
   notifyWebhookUrl: '',
   notifyHttpUrl: '',
@@ -71,11 +74,14 @@ onMounted(async () => {
     form.publicBaseURL = data.configs['public.base_url'] || '';
     form.homeTitle = data.configs['public.home.title'] || form.homeTitle;
     form.homeMessage = data.configs['public.home.message'] || form.homeMessage;
+    form.homeRedirectUrl = data.configs['public.home.redirect_url'] || '';
     form.notFoundTitle = data.configs['public.not_found.title'] || form.notFoundTitle;
     form.notFoundMessage = data.configs['public.not_found.message'] || form.notFoundMessage;
     form.goneTitle = data.configs['public.gone.title'] || form.goneTitle;
     form.goneMessage = data.configs['public.gone.message'] || form.goneMessage;
     form.footer = data.configs['public.footer'] || form.footer;
+    form.icp = data.configs['public.icp'] || '';
+    form.policeIcp = data.configs['public.police_icp'] || '';
     form.notifyWebhookUrl = data.configs['notify_webhook_url'] || '';
     form.notifyHttpUrl = data.configs['notify_http_url'] || '';
     form.domainCheckEnabled = data.configs['domain_check_enabled'] === '1';

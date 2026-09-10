@@ -192,6 +192,8 @@ function handleMenuSelect(key: string) {
 .admin-sider :deep(.n-layout-sider-scroll-container) {
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .sider-brand {
@@ -215,7 +217,7 @@ function handleMenuSelect(key: string) {
 }
 
 .sider-menu {
-  flex: 1;
+  flex: 1 0 auto;
   background: transparent;
   padding: var(--space-3) var(--space-2);
   --n-item-text-color: var(--color-text-secondary);
@@ -240,6 +242,7 @@ function handleMenuSelect(key: string) {
   border-top: 1px solid var(--color-border);
   display: grid;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 .public-link {

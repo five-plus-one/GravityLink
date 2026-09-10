@@ -12,7 +12,20 @@
     <h1>{{.Title}}</h1>
     <p>{{.Message}}</p>
     {{if .StatusText}}<div class="landing-status">{{.StatusText}}</div>{{end}}
-    <footer class="landing-footer">{{.Footer}}</footer>
+    <footer class="landing-footer">
+      {{.Footer}}
+      {{if or .ICP .PoliceICP}}
+      <div class="landing-beian">
+        {{if .ICP}}<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{.ICP}}</a>{{end}}
+        {{if .PoliceICP}}<a href="https://beian.mps.gov.cn/" target="_blank" rel="noopener noreferrer">{{.PoliceICP}}</a>{{end}}
+      </div>
+      {{end}}
+    </footer>
   </main>
+  <style>
+    .landing-beian { margin-top: 8px; font-size: 12px; }
+    .landing-beian a { color: var(--color-text-tertiary, #7a8990); text-decoration: none; margin: 0 6px; }
+    .landing-beian a:hover { color: var(--color-primary, #0f766e); }
+  </style>
 </body>
 </html>

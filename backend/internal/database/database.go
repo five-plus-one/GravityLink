@@ -95,6 +95,7 @@ func EnsureSchema(db *gorm.DB) error {
 		{&model.Link{}, "OnlineSchedule"},
 		{&model.Link{}, "LegacyID"},
 		{&model.AccessLog{}, "SourceApp"},
+		{&model.ShareCard{}, "LegacyID"},
 	} {
 		if !db.Migrator().HasColumn(col.Model, col.Name) {
 			if err := db.Migrator().AddColumn(col.Model, col.Name); err != nil {

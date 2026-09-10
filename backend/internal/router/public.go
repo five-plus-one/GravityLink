@@ -3,9 +3,12 @@ package router
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/model"
@@ -78,9 +81,17 @@ func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *ser
 		legacyIDRedirect(c, deps, links, landings, pages, recorder, "qid")
 	})
 
-	// /common/shareCard/redirect/?sid={id}：分享卡片，按 legacy_id 查找
+	// /common/shareCard/redirect/?sid={id}：分享卡片展示页（扫码进入，配置微信 JS-SDK 引导分享）
 	public.GET("/common/shareCard/redirect/", func(c *gin.Context) {
-		legacyIDRedirect(c, deps, links, landings, pages, recorder, "sid")
+		legacyShareCardPage(c, deps, pages)
+	})
+	// /common/shareCard/redirect/signature：微信 JS-SDK 签名端点
+	public.GET("/common/shareCard/redirect/signature", func(c *gin.Context) {
+		legacyShareCardSignature(c, deps)
+	})
+	// /common/shareCard/?sid={id}：分享卡片落地页（被分享者打开，302 到目标）
+	public.GET("/common/shareCard/", func(c *gin.Context) {
+		legacyShareCardRedirect(c, deps, pages)
 	})
 
 	// /common/kf/redirect/?kid={id}：客服码，按 legacy_id 查找
@@ -182,7 +193,11 @@ func writeLegacyNotFound(c *gin.Context, pages *service.PublicPageService) {
 
 func publicHome(pages *service.PublicPageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		html, status := pages.Home(c.Request.Context())
+		html, status, redirectURL := pages.Home(c.Request.Context())
+		if redirectURL != "" {
+			c.Redirect(http.StatusFound, redirectURL)
+			return
+		}
 		c.Data(status, "text/html; charset=utf-8", []byte(html))
 	}
 }
@@ -297,4 +312,73 @@ func writeResolveError(c *gin.Context, err error, pages *service.PublicPageServi
 
 func isAPIPath(path string) bool {
 	return path == "/api" || strings.HasPrefix(path, "/api/")
+}
+
+// legacyShareCardRedirect 旧版分享卡片落地页：/common/shareCard/?sid={id}
+// 被分享者打开后 302 跳转到目标 URL。
+func legacyShareCardRedirect(c *gin.Context, deps Dependencies, pages *service.PublicPageService) {
+	card, ok := findShareCardByLegacyID(c, deps, pages)
+	if !ok {
+		return
+	}
+	if card.TargetURL == "" {
+		writeLegacyNotFound(c, pages)
+		return
+	}
+	_ = deps.DB.Model(&card).UpdateColumn("visits", gorm.Expr("visits + 1")).Error
+	c.Redirect(http.StatusMovedPermanently, card.TargetURL)
+}
+
+// legacyShareCardPage 旧版分享卡片展示页：/common/shareCard/redirect/?sid={id}
+// 扫码进入，展示卡片信息并配置微信 JS-SDK 引导分享。
+func legacyShareCardPage(c *gin.Context, deps Dependencies, pages *service.PublicPageService) {
+	card, ok := findShareCardByLegacyID(c, deps, pages)
+	if !ok {
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	_ = shareTemplate.Execute(c.Writer, card)
+}
+
+func findShareCardByLegacyID(c *gin.Context, deps Dependencies, pages *service.PublicPageService) (model.ShareCard, bool) {
+	sidStr := strings.TrimSpace(c.Query("sid"))
+	if sidStr == "" {
+		writeLegacyNotFound(c, pages)
+		return model.ShareCard{}, false
+	}
+	sid, err := strconv.ParseUint(sidStr, 10, 64)
+	if err != nil {
+		writeLegacyNotFound(c, pages)
+		return model.ShareCard{}, false
+	}
+	var card model.ShareCard
+	if err := deps.DB.Where("legacy_id = ?", sid).First(&card).Error; err != nil {
+		if err2 := deps.DB.Where("id = ?", sid).First(&card).Error; err2 != nil {
+			writeLegacyNotFound(c, pages)
+			return model.ShareCard{}, false
+		}
+	}
+	if card.Status != "" && card.Status != "active" {
+		writeLegacyNotFound(c, pages)
+		return model.ShareCard{}, false
+	}
+	return card, true
+}
+
+// legacyShareCardSignature 微信 JS-SDK 签名端点（旧版分享卡片路由用）。
+func legacyShareCardSignature(c *gin.Context, deps Dependencies) {
+	pageURL := c.Query("url")
+	if pageURL == "" {
+		response.Error(c, 400, 4001, "missing url")
+		return
+	}
+	wx := service.NewWechatService(deps.DB, filepath.Dir(deps.Config.ConfigFile))
+	signature, err := wx.Sign(c.Request.Context(), pageURL)
+	if err != nil {
+		response.Error(c, 503, 5000, "wechat sign unavailable")
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	response.OK(c, signature)
 }

@@ -11,6 +11,9 @@ import {
   getDeviceStats,
   getGeoStats,
   getHourlyStats,
+  getOverviewDaily,
+  getOverviewHourly,
+  getOverviewSummary,
   getSummaryStats,
   listLinks,
   resetLinkStats,
@@ -28,7 +31,7 @@ const route = useRoute();
 const auth = useAuthStore();
 
 const links = ref<LinkItem[]>([]);
-const selectedLinkId = ref<number | null>(null);
+const selectedLinkId = ref<number>(0); // 0 = 全部链接
 const loading = ref(false);
 const summary = ref<SummaryStats | null>(null);
 const daily = ref<DailyPoint[]>([]);
@@ -48,12 +51,13 @@ function labelOf(value: string): string {
   return deviceLabels[value] ?? (value || '未知');
 }
 
-const linkOptions = computed(() =>
-  links.value.map((link) => ({
+const linkOptions = computed(() => [
+  { label: '全部链接', value: 0 },
+  ...links.value.map((link) => ({
     label: `${link.Code}${link.Title ? ` · ${link.Title}` : ''}`,
     value: link.ID,
   })),
-);
+]);
 
 const dailyOption = computed(() => ({
   grid: { left: 40, right: 20, top: 30, bottom: 40 },
@@ -165,26 +169,26 @@ const geoOption = computed(() => pieOption(geo.value));
 onMounted(async () => {
   try {
     links.value = (await listLinks()).items;
-    if (links.value.length > 0) {
-      // 支持从链接列表/概览页 ?linkId= 直达指定链接的统计
-      const wanted = Number(route.query.linkId);
-      const matched = links.value.find((l) => l.ID === wanted);
-      selectedLinkId.value = (matched || links.value[0]).ID;
+    // 支持从链接列表/概览页 ?linkId= 直达指定链接的统计
+    const wanted = Number(route.query.linkId);
+    if (wanted > 0 && links.value.some((l) => l.ID === wanted)) {
+      selectedLinkId.value = wanted;
+    } else {
+      selectedLinkId.value = 0; // 默认全部链接
     }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载链接列表失败');
   }
 });
 
-watch(selectedLinkId, async (id) => {
-  if (id === null) return;
+watch(selectedLinkId, async () => {
   await load();
 });
 
 // P1：统计日期范围（趋势图与分布图适用；最长 90 天由后端兜底）
 const dateRange = ref<[number, number] | null>(null);
 watch(dateRange, () => {
-  if (selectedLinkId.value !== null) load();
+  load();
 });
 
 function rangeQuery(): { start?: string; end?: string } {
@@ -194,25 +198,38 @@ function rangeQuery(): { start?: string; end?: string } {
 }
 
 async function load() {
-  if (selectedLinkId.value === null) return;
+  const id = selectedLinkId.value;
   loading.value = true;
   try {
-    const id = selectedLinkId.value;
     const range = rangeQuery();
     const rangeParams = new URLSearchParams(Object.entries(range).filter(([, v]) => v)).toString();
     const suffix = rangeParams ? `?${rangeParams}` : '';
-    const [s, d, h, dev, g] = await Promise.all([
-      getSummaryStats(id),
-      getDailyStats(id, suffix),
-      getHourlyStats(id),
-      getDeviceStats(id, suffix),
-      getGeoStats(id, suffix),
-    ]);
-    summary.value = s;
-    daily.value = d;
-    hourly.value = h;
-    deviceStats.value = dev;
-    geo.value = g;
+    if (id === 0) {
+      // 全部链接：用聚合接口
+      const [s, d, h] = await Promise.all([
+        getOverviewSummary(),
+        getOverviewDaily(suffix),
+        getOverviewHourly(),
+      ]);
+      summary.value = s;
+      daily.value = d;
+      hourly.value = h;
+      deviceStats.value = null; // 聚合暂无设备/地域数据
+      geo.value = [];
+    } else {
+      const [s, d, h, dev, g] = await Promise.all([
+        getSummaryStats(id),
+        getDailyStats(id, suffix),
+        getHourlyStats(id),
+        getDeviceStats(id, suffix),
+        getGeoStats(id, suffix),
+      ]);
+      summary.value = s;
+      daily.value = d;
+      hourly.value = h;
+      deviceStats.value = dev;
+      geo.value = g;
+    }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载统计失败');
   } finally {

@@ -18,24 +18,31 @@ type PublicPageService struct {
 }
 
 type PublicPageView struct {
-	SiteName string
-	Title    string
-	Message  string
-	Footer   string
+	SiteName   string
+	Title      string
+	Message    string
+	Footer     string
+	ICP        string
+	PoliceICP  string
 }
 
 func NewPublicPageService(db *gorm.DB, templates *template.Template) *PublicPageService {
 	return &PublicPageService{db: db, templates: templates}
 }
 
-func (s *PublicPageService) Home(ctx context.Context) (string, int) {
+func (s *PublicPageService) Home(ctx context.Context) (string, int, string) {
+	values := s.configs(ctx)
+	// 自动跳转：配置了 public.home.redirect_url 时直接 302
+	if redirectURL := values["public.home.redirect_url"]; redirectURL != "" {
+		return "", http.StatusFound, redirectURL
+	}
 	view := s.view(ctx, "home", PublicPageView{
 		SiteName: "GravityLink",
 		Title:    "链接服务正在运行",
 		Message:  "这是短链接访问入口，请使用完整短链接访问目标内容。",
 		Footer:   "GravityLink",
 	})
-	return s.render(view, http.StatusOK), http.StatusOK
+	return s.render(view, http.StatusOK), http.StatusOK, ""
 }
 
 func (s *PublicPageService) NotFound(ctx context.Context) (string, int) {
@@ -73,10 +80,12 @@ func (s *PublicPageService) AccessDenied(ctx context.Context, message string) (s
 func (s *PublicPageService) view(ctx context.Context, page string, fallback PublicPageView) PublicPageView {
 	values := s.configs(ctx)
 	return PublicPageView{
-		SiteName: firstPublicValue(values["public.site_name"], fallback.SiteName),
-		Title:    firstPublicValue(values["public."+page+".title"], fallback.Title),
-		Message:  firstPublicValue(values["public."+page+".message"], fallback.Message),
-		Footer:   firstPublicValue(values["public.footer"], fallback.Footer),
+		SiteName:  firstPublicValue(values["public.site_name"], fallback.SiteName),
+		Title:     firstPublicValue(values["public."+page+".title"], fallback.Title),
+		Message:   firstPublicValue(values["public."+page+".message"], fallback.Message),
+		Footer:    firstPublicValue(values["public.footer"], fallback.Footer),
+		ICP:       values["public.icp"],
+		PoliceICP: values["public.police_icp"],
 	}
 }
 
@@ -113,6 +122,8 @@ func (s *PublicPageService) render(view PublicPageView, status int) string {
 		"Title":      view.Title,
 		"Message":    view.Message,
 		"Footer":     view.Footer,
+		"ICP":        view.ICP,
+		"PoliceICP":  view.PoliceICP,
 		"StatusText": statusText,
 	}
 	var buf bytes.Buffer
