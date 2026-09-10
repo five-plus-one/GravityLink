@@ -390,5 +390,19 @@ function handleMenuSelect(key: string) {
   .main-header {
     padding: 0 var(--space-4);
   }
+  .page-heading h1 {
+    font-size: var(--font-size-xl);
+  }
+  .page-heading p {
+    font-size: var(--font-size-sm);
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-shell :deep(.n-layout-sider) {
+    position: fixed !important;
+    z-index: 100;
+    height: 100%;
+  }
 }
 </style>

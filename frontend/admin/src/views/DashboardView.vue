@@ -149,7 +149,7 @@ let started = false;
         <NCard class="metric-card metric-orange" :hoverable="canWrite" @click="canWrite && $router.push('/domains')">
           <NStatistic label="域名" :value="loading || domainsError || !canWrite ? '—' : domains.length">
             <template #prefix><Globe2 :size="20" /></template>
-            <template #suffix><span class="metric-note">{{ !canWrite ? '仅管理员可查看' : domainsError || '入口 / 落地 / 中转' }}</span></template>
+            <template #suffix><span class="metric-note">{{ !canWrite ? '仅管理员可查看' : domainsError || '入口/落地/中转' }}</span></template>
           </NStatistic>
         </NCard>
       </NGridItem>
@@ -268,6 +268,7 @@ let started = false;
   color: var(--color-text-tertiary);
   font-size: var(--font-size-xs);
   font-weight: 400;
+  white-space: nowrap;
 }
 
 .metric-green :deep(.n-statistic-value__prefix) { color: #159b83; background: #e2f8f2; }
