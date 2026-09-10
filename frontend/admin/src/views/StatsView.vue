@@ -240,7 +240,7 @@ async function load() {
 // P1：重置该链接统计（管理员）
 const resetting = ref(false);
 async function doReset() {
-  if (selectedLinkId.value === null || resetting.value) return;
+  if (selectedLinkId.value <= 0 || resetting.value) return;
   resetting.value = true;
   try {
     await resetLinkStats(selectedLinkId.value);
@@ -280,10 +280,10 @@ async function doReset() {
               end-placeholder="结束日期"
               style="width: 260px"
             />
-            <NButton :loading="loading" :disabled="selectedLinkId === null" @click="load">
+            <NButton :loading="loading" @click="load">
               <template #icon><RefreshCw :size="16" /></template>
             </NButton>
-            <NPopconfirm v-if="auth.isSuperAdmin || auth.user?.role === 'admin'" @positive-click="doReset">
+            <NPopconfirm v-if="(auth.isSuperAdmin || auth.user?.role === 'admin') && selectedLinkId > 0" @positive-click="doReset">
               <template #trigger>
                 <NButton type="error" ghost :loading="resetting" title="清空 Redis 计数与聚合表，原始访问日志保留">
                   <template #icon><RotateCcw :size="16" /></template>
