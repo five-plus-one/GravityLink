@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 // 统一由 echarts.ts 注册图表组件（含饼图），模块加载即完成注册
 import '../echarts';
 import VChart from 'vue-echarts';
-import { BarChart3, RefreshCw, RotateCcw } from '@lucide/vue';
+import { RefreshCw, RotateCcw } from '@lucide/vue';
 import { NButton, NCard, NDatePicker, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
 import {
   getDailyStats,
@@ -175,6 +175,8 @@ onMounted(async () => {
       selectedLinkId.value = wanted;
     } else {
       selectedLinkId.value = 0; // 默认全部链接
+      // 初始值保持 0 时 watch 不会触发，需主动拉取聚合数据
+      await load();
     }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载链接列表失败');
@@ -296,11 +298,7 @@ async function doReset() {
         </div>
       </template>
 
-      <NEmpty v-if="!selectedLinkId" description="选择链接查看数据">
-        <template #icon><BarChart3 :size="32" /></template>
-      </NEmpty>
-
-      <template v-else>
+      <template>
         <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: var(--space-5)">
           <NGridItem span="4 s:2 m:1">
             <NCard size="small" embedded>
