@@ -51,7 +51,7 @@ const saving = ref(false);
 const modalError = ref('');
 const formRef = ref<FormInst | null>(null);
 
-type TemplateKind = 'liveqr' | 'redirect_notice' | 'custom';
+type TemplateKind = 'liveqr' | 'redirect_notice' | 'custom' | 'kf' | 'kami';
 
 const form = reactive({
   template: 'liveqr' as TemplateKind,
@@ -71,11 +71,21 @@ const form = reactive({
   showTargetUrl: true,
   // custom
   html: '',
+  // kf
+  kfSubtext: '长按识别二维码，添加客服微信',
+  kfFooter: '工作时间内回复更快',
+  safetyTip: '',
+  // kami
+  announcement: '',
+  kamiButtonText: '立即领取',
+  kamiProjectId: null as number | null,
 });
 
-const templateMeta: Record<TemplateKind, { label: string; desc: string; tag: 'success' | 'warning' | 'info' }> = {
+const templateMeta: Record<TemplateKind, { label: string; desc: string; tag: 'success' | 'warning' | 'info' | 'error' }> = {
   liveqr: { label: '群活码页', desc: '展示群二维码，配合活码链接使用', tag: 'success' },
+  kf: { label: '客服码页', desc: '客服二维码 + 微信号复制 + 在线状态', tag: 'info' },
   redirect_notice: { label: '跳转提示页', desc: '「即将前往外站」倒计时中转页', tag: 'warning' },
+  kami: { label: '卡密提取页', desc: '访客一键领取卡密，支持提取口令', tag: 'error' },
   custom: { label: '自定义页', desc: '自由 HTML 托管（已做 XSS 防护）', tag: 'info' },
 };
 
@@ -97,6 +107,12 @@ const rules: FormRules = {
       trigger: 'blur',
     },
   ],
+  kamiProjectId: [
+    {
+      validator: (_r, _v: number | null) => (form.template !== 'kami' || form.kamiProjectId ? true : new Error('请填写卡密项目 ID')),
+      trigger: ['blur', 'change'],
+    },
+  ],
 };
 
 function buildPayload(): CreateLandingPagePayload {
@@ -104,8 +120,14 @@ function buildPayload(): CreateLandingPagePayload {
   if (form.template === 'liveqr') {
     return { ...base, content: { headline: form.headline, subtext: form.subtext, footer_text: form.footer, theme_color: form.color, show_logo: form.showLogo, logo_url: form.showLogo ? form.logoUrl : '' } };
   }
+  if (form.template === 'kf') {
+    return { ...base, content: { headline: form.headline, subtext: form.kfSubtext, footer_text: form.kfFooter, theme_color: form.color, safety_tip: form.safetyTip } };
+  }
   if (form.template === 'redirect_notice') {
     return { ...base, content: { message: form.message, button_text: form.buttonText, countdown: form.countdown, show_target_url: form.showTargetUrl, theme_color: form.color } };
+  }
+  if (form.template === 'kami') {
+    return { ...base, content: { announcement: form.announcement, button_text: form.kamiButtonText, theme_color: form.color, project_id: form.kamiProjectId } };
   }
   return { ...base, content: { html: form.html, theme_color: form.color } };
 }
@@ -182,6 +204,12 @@ function openCreate() {
     countdown: 5,
     showTargetUrl: true,
     html: '',
+    kfSubtext: '长按识别二维码，添加客服微信',
+    kfFooter: '工作时间内回复更快',
+    safetyTip: '',
+    announcement: '',
+    kamiButtonText: '立即领取',
+    kamiProjectId: null,
   });
   modalError.value = '';
   showModal.value = true;
@@ -205,6 +233,12 @@ function openEdit(row: LandingPageItem) {
     countdown: Number(c.countdown ?? 5),
     showTargetUrl: c.show_target_url !== false,
     html: String(c.html || ''),
+    kfSubtext: String(c.subtext || '长按识别二维码，添加客服微信'),
+    kfFooter: String(c.footer_text || '工作时间内回复更快'),
+    safetyTip: String(c.safety_tip || ''),
+    announcement: String(c.announcement || ''),
+    kamiButtonText: String(c.button_text || '立即领取'),
+    kamiProjectId: c.project_id != null ? Number(c.project_id) : null,
   });
   modalError.value = '';
   showModal.value = true;
@@ -368,6 +402,30 @@ function messageOf(err: unknown): string {
         </NFormItem>
       </template>
 
+      <!-- 客服码页字段 -->
+      <template v-else-if="form.template === 'kf'">
+        <NFormItem label="主标题" path="headline">
+          <NInput v-model:value="form.headline" placeholder="扫码后看到的标题，如「添加专属客服」" />
+        </NFormItem>
+        <NFormItem label="说明">
+          <NInput v-model:value="form.kfSubtext" type="textarea" :rows="2" placeholder="标题下方的引导文案" />
+        </NFormItem>
+        <NFormItem label="微信号备注（在二维码配置中按客服设置）">
+          <NAlert type="info" :show-icon="true">每个客服的微信号存在「二维码配置 → 微信号」字段；展示页会自动提供一键复制。</NAlert>
+        </NFormItem>
+        <div class="form-row">
+          <NFormItem label="页脚提示">
+            <NInput v-model:value="form.kfFooter" placeholder="工作时间内回复更快" />
+          </NFormItem>
+          <NFormItem label="主题色">
+            <NColorPicker v-model:value="form.color" :show-alpha="false" :modes="['hex']" style="width: 100%" />
+          </NFormItem>
+        </div>
+        <NFormItem label="安全提示（可选）">
+          <NInput v-model:value="form.safetyTip" type="textarea" :rows="2" placeholder="如：谨防冒充客服的诈骗行为，平台不会索要验证码" />
+        </NFormItem>
+      </template>
+
       <!-- 跳转提示页字段 -->
       <template v-else-if="form.template === 'redirect_notice'">
         <NFormItem label="提示文案">
@@ -387,6 +445,25 @@ function messageOf(err: unknown): string {
         <NFormItem label="主题色">
           <NColorPicker v-model:value="form.color" :show-alpha="false" :modes="['hex']" style="width: 100%" />
         </NFormItem>
+      </template>
+
+      <!-- 卡密提取页字段 -->
+      <template v-else-if="form.template === 'kami'">
+        <NFormItem label="公告文案">
+          <NInput v-model:value="form.announcement" type="textarea" :rows="2" placeholder="点击下方按钮领取卡密，领取后请妥善保存。" />
+        </NFormItem>
+        <div class="form-row">
+          <NFormItem label="按钮文案">
+            <NInput v-model:value="form.kamiButtonText" placeholder="立即领取" />
+          </NFormItem>
+          <NFormItem label="主题色">
+            <NColorPicker v-model:value="form.color" :show-alpha="false" :modes="['hex']" style="width: 100%" />
+          </NFormItem>
+        </div>
+        <NFormItem label="卡密项目 ID" path="kamiProjectId">
+          <NInputNumber v-model:value="form.kamiProjectId" :min="1" :precision="0" style="width:100%" placeholder="在「卡密分发」页查看项目 ID" />
+        </NFormItem>
+        <NAlert type="info" :show-icon="true">绑定项目后，访客打开此页点击按钮即可原子领取一张未发放卡密；口令与频率限制由项目配置控制。</NAlert>
       </template>
 
       <!-- 自定义页字段 -->
@@ -461,7 +538,7 @@ function messageOf(err: unknown): string {
 
 .tpl-picker {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-3);
   width: 100%;
 }

@@ -39,4 +39,4 @@
 - **Phase 4**：开源收尾（迁移工具、docker-compose、README）
 - **Phase 5**：UI/UX 全量重构（Naive UI + Pinia、路由化、设计令牌）
 
-当前阶段：**Phase 5 界面重构后，正在补齐业务闭环与旧版迁移差距**，见 [workspace/status.md](../workspace/status.md)。
+当前阶段：**Phase 8 收尾完成（客服码/卡密/开放 API + 落地页模板闭环）**，见 [workspace/status.md](../workspace/status.md)。

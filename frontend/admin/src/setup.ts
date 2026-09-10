@@ -63,6 +63,7 @@ export interface SetupPayload {
     email?: string;
     password?: string;
   };
+  public_base_url?: string;
 }
 
 export interface LogtoCheckResult {

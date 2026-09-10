@@ -211,8 +211,9 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 			Status    string
 			ExpireAt  *time.Time
 			Owner     string
+			WxRemark  string
 		}
-		if c.ShouldBindJSON(&in) != nil || !validTargetURL(in.TargetURL) || len(in.Label) > 128 || len(in.Owner) > 128 || in.Weight < 1 || (in.Status != "active" && in.Status != "disabled") {
+		if c.ShouldBindJSON(&in) != nil || !validTargetURL(in.TargetURL) || len(in.Label) > 128 || len(in.Owner) > 128 || len(in.WxRemark) > 128 || in.Weight < 1 || (in.Status != "active" && in.Status != "disabled") {
 			response.Error(c, 400, 4001, "目标配置无效")
 			return
 		}
@@ -232,11 +233,16 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 		t.Status = in.Status
 		t.ExpireAt = in.ExpireAt
 		t.Owner = in.Owner
+		if strings.TrimSpace(in.WxRemark) != "" {
+			t.WxRemark = &in.WxRemark
+		} else {
+			t.WxRemark = nil
+		}
 		var saveErr error
 		if t.ID == 0 {
 			saveErr = deps.DB.Create(&t).Error
 		} else {
-			saveErr = deps.DB.Model(&t).Updates(map[string]any{"label": t.Label, "target_url": t.TargetURL, "weight": t.Weight, "scan_limit": t.ScanLimit, "priority": t.Priority, "status": t.Status, "expire_at": t.ExpireAt, "owner": t.Owner}).Error
+			saveErr = deps.DB.Model(&t).Updates(map[string]any{"label": t.Label, "target_url": t.TargetURL, "weight": t.Weight, "scan_limit": t.ScanLimit, "priority": t.Priority, "status": t.Status, "expire_at": t.ExpireAt, "owner": t.Owner, "wx_remark": t.WxRemark}).Error
 		}
 		if saveErr != nil {
 			response.Error(c, 500, 5000, "保存失败")

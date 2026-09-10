@@ -43,6 +43,7 @@ import EntryQRCode from '../components/EntryQRCode.vue';
 import BatchAdd from '../components/BatchAdd.vue';
 import ShareSuccessModal from '../components/ShareSuccessModal.vue';
 import LinkShareDrawer from '../components/LinkShareDrawer.vue';
+import OnlineSchedulePicker from '../components/OnlineSchedulePicker.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -78,8 +79,9 @@ const form = reactive({
   entryDomainId: null as number | null,
   targetUrl: '',
   accessRule: 'none' as 'none' | 'wechat' | 'ios' | 'android' | 'mobile' | 'pc',
+  onlineSchedule: '',
   strategyMode: 'round_robin' as 'round_robin' | 'weighted',
-  targets: [{ label: '', url: '', weight: 1, scanLimit: null as number | null }],
+  targets: [{ label: '', url: '', weight: 1, scanLimit: null as number | null, wxRemark: '' }],
   expireAt: null as number | null,
   status: 'active' as 'active' | 'disabled',
 });
@@ -188,6 +190,27 @@ const filtered = computed(() => {
     return `${item.Code} ${item.Title || ''} ${item.TargetURL || ''}`.toLowerCase().includes(value);
   });
 });
+
+const landingPageOptions = computed(() =>
+  landingPages.value
+    .filter((p) => p.Template === 'liveqr' || p.Template === 'kf' || p.Template === 'kami')
+    .map((p) => ({ label: `${p.Title}（${landingTemplateLabel(p.Template)}）`, value: p.ID })),
+);
+
+function landingTemplateLabel(t: string): string {
+  if (t === 'kf') return '客服码';
+  if (t === 'kami') return '卡密提取';
+  return '活码';
+}
+
+const selectedLandingTemplate = computed(() => {
+  const page = landingPages.value.find((p) => p.ID === landingPageId.value);
+  return page?.Template || '';
+});
+
+const isKfLanding = computed(() => selectedLandingTemplate.value === 'kf');
+const isKamiLanding = computed(() => selectedLandingTemplate.value === 'kami');
+const needsTargets = computed(() => form.type === 'liveqr' && !isKamiLanding.value);
 
 const shortUrlBase = computed(() => {
   const map = new Map<number, string>();
@@ -334,8 +357,10 @@ function openCreate() {
     code: '',
     entryDomainId: null,
     targetUrl: '',
+    accessRule: 'none',
+    onlineSchedule: '',
     strategyMode: 'round_robin',
-    targets: [{ label: '', url: '', weight: 1, scanLimit: null }],
+    targets: [{ label: '', url: '', weight: 1, scanLimit: null, wxRemark: '' }],
     expireAt: null,
     status: 'active',
   });
@@ -350,10 +375,10 @@ function openEdit(row: LinkItem) {
     type: row.Type as typeof form.type,
     title: row.Title || '',
     code: row.Code,
-    entryDomainId: null,
+    entryDomainId: row.EntryDomainID,
     targetUrl: row.TargetURL || '',
     strategyMode: 'round_robin',
-    targets: [{ label: '', url: '', weight: 1, scanLimit: null }],
+    targets: [{ label: '', url: '', weight: 1, scanLimit: null, wxRemark: '' }],
     expireAt: null,
     status: (row.Status === 'disabled' ? 'disabled' : 'active') as 'active' | 'disabled',
   });
@@ -372,8 +397,9 @@ async function submit() {
   saving.value = true;
   try {
     if (modalMode.value === 'create') {
-      const page = landingPages.value.find(p => p.ID === landingPageId.value && p.Template === 'liveqr');
-      if (form.type === 'liveqr' && !page) throw new Error('请选择活码落地页；没有可选项时请先创建 liveqr 落地页');
+      const page = landingPages.value.find(p => p.ID === landingPageId.value);
+      if (form.type === 'liveqr' && !page) throw new Error('请选择活码落地页；没有可选项时请先创建落地页');
+      if (form.type === 'liveqr' && page && !['liveqr', 'kf', 'kami'].includes(page.Template)) throw new Error('所选落地页模板不支持活码链接');
       const created = await createLink({
         landing_page_id: form.type === 'liveqr' ? page?.ID : undefined,
         landing_domain_id: form.type === 'liveqr' ? page?.DomainID : undefined,
@@ -383,9 +409,10 @@ async function submit() {
         entry_domain_id: form.entryDomainId!,
         target_url: form.type === 'liveqr' ? '' : form.targetUrl,
         access_rule: form.accessRule !== 'none' ? form.accessRule : undefined,
+        online_schedule: isKfLanding.value && form.onlineSchedule ? form.onlineSchedule : undefined,
         expire_at: form.expireAt ? new Date(form.expireAt).toISOString() : undefined,
         strategy:
-          form.type === 'liveqr'
+          form.type === 'liveqr' && needsTargets.value
             ? {
                 mode: form.strategyMode,
                 targets: form.targets.map((item) => ({
@@ -393,6 +420,7 @@ async function submit() {
                   target_url: item.url.trim(),
                   weight: form.strategyMode === 'weighted' ? item.weight : 1,
                   scan_limit: item.scanLimit ?? undefined,
+                  wx_remark: item.wxRemark.trim() || undefined,
                 })),
               }
             : undefined,
@@ -404,13 +432,19 @@ async function submit() {
       showShare.value = true;
       message.success('链接已创建');
     } else if (editingId.value !== null) {
+      const origRow = items.value.find((i) => i.ID === editingId.value);
+      const codeChanged = origRow && form.code.trim() && form.code.trim() !== origRow.Code;
+      const domainChanged = origRow && form.entryDomainId && form.entryDomainId !== origRow.EntryDomainID;
       await updateLink(editingId.value, {
         title: form.title,
         target_url: form.type === 'liveqr' ? undefined : form.targetUrl,
         expire_at: form.expireAt ? new Date(form.expireAt).toISOString() : null,
         status: form.status,
+        online_schedule: isKfLanding.value ? form.onlineSchedule : undefined,
+        code: codeChanged ? form.code.trim() : undefined,
+        entry_domain_id: domainChanged ? form.entryDomainId! : undefined,
       });
-      message.success('链接已更新');
+      message.success(codeChanged ? `链接已更新，旧码 ${origRow!.Code} 将自动跳转到新码` : '链接已更新');
     }
     showModal.value = false;
     await refresh();
@@ -472,7 +506,7 @@ function messageOf(err: unknown): string {
 }
 
 function addTarget() {
-  form.targets.push({ label: '', url: '', weight: 1, scanLimit: null });
+  form.targets.push({ label: '', url: '', weight: 1, scanLimit: null, wxRemark: '' });
 }
 
 function removeTarget(index: number) {
@@ -545,21 +579,12 @@ function removeTarget(index: number) {
       </NFormItem>
 
       <div class="form-row">
-        <NFormItem v-if="modalMode === 'create'" label="短码">
-          <NInput v-model:value="form.code" placeholder="留空自动生成" />
+        <NFormItem label="短码">
+          <NInput v-model:value="form.code" :placeholder="modalMode === 'create' ? '留空自动生成' : '修改后旧码自动跳转新码'" />
         </NFormItem>
-        <NFormItem v-else label="短码">
-          <NInput :value="form.code" disabled />
-        </NFormItem>
-
-        <NFormItem v-if="modalMode === 'create'" label="入口域名" path="entryDomainId">
+        <NFormItem label="入口域名" :path="modalMode === 'create' ? 'entryDomainId' : undefined">
           <NSelect v-model:value="form.entryDomainId" :options="entryDomainOptions" placeholder="选择入口域名" :loading="domains.loading" />
         </NFormItem>
-        <template v-else>
-          <NFormItem label="入口域名">
-            <NInput :value="editingEntryDomainHost" disabled />
-          </NFormItem>
-        </template>
       </div>
       <NFormItem v-if="modalMode === 'edit'" label="状态">
         <NSelect v-model:value="form.status" :options="statusOptions" />
@@ -571,41 +596,51 @@ function removeTarget(index: number) {
       </NFormItem>
       <template v-else-if="modalMode === 'create'">
         <NFormItem label="活码落地页（必选）">
-          <NSelect v-model:value="landingPageId" :options="landingPages.filter(p => p.Template === 'liveqr').map(p => ({ label: p.Title, value: p.ID }))" placeholder="先在落地页管理中创建活码页面" />
+          <NSelect v-model:value="landingPageId" :options="landingPageOptions" placeholder="先在落地页管理中创建活码/客服/卡密页面" />
         </NFormItem>
-        <div class="liveqr-section">
-          <div class="section-title">
-            <div><strong>分发策略</strong><p class="muted">决定多个二维码目标的展示方式</p></div>
-            <NSelect v-model:value="form.strategyMode" :options="strategyOptions" style="width: 160px" />
+        <template v-if="isKamiLanding">
+          <NAlert type="info" :show-icon="true">卡密提取页无需配置二维码目标；访客打开后点击按钮即可领取卡密。</NAlert>
+        </template>
+        <template v-else>
+          <div class="liveqr-section">
+            <div class="section-title">
+              <div><strong>分发策略</strong><p class="muted">决定多个二维码目标的展示方式</p></div>
+              <NSelect v-model:value="form.strategyMode" :options="strategyOptions" style="width: 160px" />
+            </div>
+            <NAlert type="info" :show-icon="true">
+              {{ form.strategyMode === 'round_robin' ? '按添加顺序使用目标，达到扫码上限后切换下一项；上限留空时会持续使用该目标。' : '权重模式按比例随机分发，权重越高，被选中的概率越大。' }}
+            </NAlert>
           </div>
-          <NAlert type="info" :show-icon="true">
-            {{ form.strategyMode === 'round_robin' ? '按添加顺序使用目标，达到扫码上限后切换下一项；上限留空时会持续使用该目标。' : '权重模式按比例随机分发，权重越高，被选中的概率越大。' }}
-          </NAlert>
-        </div>
 
-        <NFormItem label="二维码目标" path="targets">
-          <div class="target-list">
-            <div v-for="(target, index) in form.targets" :key="index" class="target-row">
-              <div class="target-index">{{ index + 1 }}</div>
-              <NInput v-model:value="target.label" placeholder="名称（可选）" />
-              <div><NInput v-model:value="target.url" placeholder="https://example.com/qr.png 或从素材库选择" /><MaterialPicker relative @select="target.url=$event" /></div>
-              <NInputNumber
-                v-if="form.strategyMode === 'weighted'"
-                v-model:value="target.weight"
-                :min="1"
-                :precision="0"
-                placeholder="权重"
-              />
-              <NInputNumber v-model:value="target.scanLimit" :min="1" :precision="0" clearable placeholder="扫码上限" />
-              <NButton text type="error" :disabled="form.targets.length === 1" aria-label="删除目标" @click="removeTarget(index)">
-                <template #icon><Trash2 :size="16" /></template>
+          <NFormItem label="二维码目标" path="targets">
+            <div class="target-list">
+              <div v-for="(target, index) in form.targets" :key="index" class="target-row" :class="{ kf: isKfLanding }">
+                <div class="target-index">{{ index + 1 }}</div>
+                <NInput v-model:value="target.label" placeholder="名称（可选）" />
+                <div><NInput v-model:value="target.url" placeholder="https://example.com/qr.png 或从素材库选择" /><MaterialPicker relative @select="target.url=$event" /></div>
+                <NInput v-if="isKfLanding" v-model:value="target.wxRemark" placeholder="微信号（可复制）" />
+                <NInputNumber
+                  v-if="form.strategyMode === 'weighted'"
+                  v-model:value="target.weight"
+                  :min="1"
+                  :precision="0"
+                  placeholder="权重"
+                />
+                <NInputNumber v-model:value="target.scanLimit" :min="1" :precision="0" clearable placeholder="扫码上限" />
+                <NButton text type="error" :disabled="form.targets.length === 1" aria-label="删除目标" @click="removeTarget(index)">
+                  <template #icon><Trash2 :size="16" /></template>
+                </NButton>
+              </div>
+              <NButton dashed block @click="addTarget">
+                <template #icon><Plus :size="16" /></template>
+                添加二维码目标
               </NButton>
             </div>
-            <NButton dashed block @click="addTarget">
-              <template #icon><Plus :size="16" /></template>
-              添加二维码目标
-            </NButton>
-          </div>
+          </NFormItem>
+        </template>
+
+        <NFormItem v-if="isKfLanding" label="在线时段（可选）">
+          <OnlineSchedulePicker v-model="form.onlineSchedule" />
         </NFormItem>
       </template>
 
@@ -720,8 +755,16 @@ function removeTarget(index: number) {
   gap: var(--space-2);
 }
 
+.target-row.kf {
+  grid-template-columns: 28px minmax(100px, .5fr) minmax(180px, 1.2fr) minmax(110px, .7fr) minmax(100px, .45fr) 32px;
+}
+
 .target-row:has(.n-input-number:nth-of-type(2)) {
   grid-template-columns: 28px minmax(100px, .5fr) minmax(190px, 1.25fr) 90px 110px 32px;
+}
+
+.target-row.kf:has(.n-input-number:nth-of-type(2)) {
+  grid-template-columns: 28px minmax(90px, .45fr) minmax(160px, 1.1fr) minmax(100px, .65fr) 90px 110px 32px;
 }
 
 .target-index {

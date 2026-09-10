@@ -1,0 +1,29 @@
+# GravityLink 部署配置（使用外部 MySQL / Redis）
+# 用法：
+#   1. 修改下方 environment 中的 SETUP_DEFAULT_MYSQL_HOST / SETUP_DEFAULT_REDIS_HOST
+#   2. docker compose -f docker-compose.external-db.yml up -d
+#   3. 浏览器打开 http://服务器IP:8081 完成初始化
+
+name: gravitylink
+
+services:
+  gravitylink:
+    image: 5plus1/gravitylink:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      HTTP_ADDR: :8080
+      ADMIN_HTTP_ADDR: :8081
+      CONFIG_FILE: /data/gravitylink.json
+      # 以下两项只是初始化向导的预填默认值，实际连接在向导中填写
+      SETUP_DEFAULT_MYSQL_HOST: 127.0.0.1
+      SETUP_DEFAULT_REDIS_HOST: 127.0.0.1
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - gravitylink_data:/data
+
+volumes:
+  gravitylink_data:

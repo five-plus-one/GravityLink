@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"gravitylink/backend/internal/cache"
 	"gravitylink/backend/internal/model"
@@ -48,6 +50,7 @@ type CreateLinkInput struct {
 	LandingPageID   *uint64        `json:"landing_page_id"`
 	Title           string         `json:"title"`
 	AccessRule      string         `json:"access_rule"`
+	OnlineSchedule  *string        `json:"online_schedule"`
 	ExpireAt        *time.Time     `json:"expire_at"`
 	CreatedBy       uint64         `json:"-"`
 	Channel         *ChannelInput  `json:"channel"`
@@ -63,10 +66,13 @@ type ChannelInput struct {
 }
 
 type UpdateLinkInput struct {
-	TargetURL *string    `json:"target_url"`
-	Title     *string    `json:"title"`
-	ExpireAt  *time.Time `json:"expire_at"`
-	Status    *string    `json:"status"`
+	TargetURL      *string    `json:"target_url"`
+	Title          *string    `json:"title"`
+	ExpireAt       *time.Time `json:"expire_at"`
+	Status         *string    `json:"status"`
+	OnlineSchedule *string    `json:"online_schedule"`
+	Code           *string    `json:"code"`
+	EntryDomainID  *uint64    `json:"entry_domain_id"`
 }
 
 type ResolveResult struct {
@@ -104,12 +110,16 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 	}
 	if linkType == model.LinkTypeLiveQR {
 		var page model.LandingPage
-		if err := s.db.WithContext(ctx).Where("id = ? AND domain_id = ? AND template = ?", *input.LandingPageID, *input.LandingDomainID, "liveqr").First(&page).Error; err != nil {
+		if err := s.db.WithContext(ctx).Where("id = ? AND domain_id = ? AND template IN ?", *input.LandingPageID, *input.LandingDomainID, []string{"liveqr", "kf", "kami"}).First(&page).Error; err != nil {
 			return model.Link{}, ErrTargetUnavailable
 		}
 		var domain model.Domain
 		if err := s.db.WithContext(ctx).Where("id = ? AND type = ? AND status = ?", *input.LandingDomainID, model.DomainTypeLanding, model.StatusActive).First(&domain).Error; err != nil {
 			return model.Link{}, ErrTargetUnavailable
+		}
+		// kami 提取页无需轮换目标；kf/liveqr 需要二维码目标
+		if page.Template != "kami" && (input.Strategy == nil || len(input.Strategy.Targets) == 0) {
+			return model.Link{}, ErrNoRoutingTarget
 		}
 	}
 
@@ -138,6 +148,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		LandingPageID:   input.LandingPageID,
 		Title:           title,
 		AccessRule:      accessRule,
+		OnlineSchedule:  input.OnlineSchedule,
 		ExpireAt:        input.ExpireAt,
 		Status:          model.LinkStatusActive,
 		CreatedBy:       input.CreatedBy,
@@ -258,13 +269,58 @@ func (s *LinkService) Update(ctx context.Context, id uint64, input UpdateLinkInp
 	if input.Status != nil {
 		updates["status"] = *input.Status
 	}
+	if input.OnlineSchedule != nil {
+		// 允许清空（传空字符串表示不限时段）
+		if strings.TrimSpace(*input.OnlineSchedule) == "" {
+			updates["online_schedule"] = nil
+		} else {
+			updates["online_schedule"] = *input.OnlineSchedule
+		}
+	}
+	// 换入口域名
+	if input.EntryDomainID != nil && *input.EntryDomainID != link.EntryDomainID {
+		var domain model.Domain
+		if err := s.db.WithContext(ctx).Where("id = ? AND type = ? AND status = ?", *input.EntryDomainID, model.DomainTypeEntry, model.StatusActive).First(&domain).Error; err != nil {
+			return model.Link{}, ErrTargetUnavailable
+		}
+		updates["entry_domain_id"] = *input.EntryDomainID
+	}
+	// 换短码：旧码存入别名表，访问旧码自动跳转新码
+	oldCode := link.Code
+	if input.Code != nil && strings.TrimSpace(*input.Code) != "" && strings.TrimSpace(*input.Code) != link.Code {
+		newCode := strings.TrimSpace(*input.Code)
+		if !customCodePattern.MatchString(newCode) {
+			return model.Link{}, ErrInvalidCode
+		}
+		// 检查新码是否已被占用
+		var count int64
+		s.db.WithContext(ctx).Model(&model.Link{}).Where("code = ? AND id != ? AND deleted_at IS NULL", newCode, link.ID).Count(&count)
+		if count > 0 {
+			return model.Link{}, ErrCodeConflict
+		}
+		updates["code"] = newCode
+	}
 
 	if len(updates) > 0 {
-		if err := s.db.WithContext(ctx).Model(&link).Updates(updates).Error; err != nil {
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&link).Updates(updates).Error; err != nil {
+				return err
+			}
+			// 换码成功后，把旧码写入别名表
+			if newCode, ok := updates["code"].(string); ok && newCode != oldCode {
+				alias := model.LinkCodeAlias{OldCode: oldCode, LinkID: link.ID}
+				// 用 ON DUPLICATE KEY 忽略重复
+				tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&alias)
+			}
+			return nil
+		})
+		if err != nil {
 			return model.Link{}, err
 		}
-		if err := s.cache.Delete(ctx, link.Code); err != nil {
-			return model.Link{}, err
+		// 清旧码缓存
+		_ = s.cache.Delete(ctx, oldCode)
+		if newCode, ok := updates["code"].(string); ok {
+			_ = s.cache.Delete(ctx, newCode)
 		}
 	}
 
@@ -282,6 +338,72 @@ func (s *LinkService) Delete(ctx context.Context, id uint64) error {
 	return s.cache.Delete(ctx, link.Code)
 }
 
+// LegacyResolve 旧版 URL 兼容：按 legacy_id 或 code 查找链接并解析。
+// 用于 /s/?key=xxx、/common/channel/redirect/?cid=xxx 等旧格式。
+func (s *LinkService) LegacyResolve(ctx context.Context, identifier string, byID bool) (ResolveResult, error) {
+	var link model.Link
+	var err error
+	if byID {
+		id, parseErr := strconv.ParseUint(identifier, 10, 64)
+		if parseErr != nil {
+			return ResolveResult{}, ErrLinkNotFound
+		}
+		err = s.db.WithContext(ctx).Where("legacy_id = ? AND deleted_at IS NULL", id).First(&link).Error
+	} else {
+		err = s.db.WithContext(ctx).Where("code = ? AND deleted_at IS NULL", identifier).First(&link).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 查别名表
+			var alias model.LinkCodeAlias
+			aliasErr := s.db.WithContext(ctx).Where("old_code = ?", identifier).First(&alias).Error
+			if aliasErr == nil {
+				err = s.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", alias.LinkID).First(&link).Error
+			}
+		}
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ResolveResult{}, ErrLinkNotFound
+	}
+	if err != nil {
+		return ResolveResult{}, err
+	}
+	return s.resolveFromModel(ctx, link)
+}
+
+func (s *LinkService) resolveFromModel(ctx context.Context, link model.Link) (ResolveResult, error) {
+	if link.Status == model.LinkStatusDisabled {
+		return ResolveResult{}, ErrLinkDisabled
+	}
+	if link.ExpireAt != nil && time.Now().After(*link.ExpireAt) {
+		return ResolveResult{}, ErrLinkExpired
+	}
+	switch link.Type {
+	case model.LinkTypeShort:
+		if link.TargetURL == nil || *link.TargetURL == "" {
+			return ResolveResult{}, ErrTargetUnavailable
+		}
+		return ResolveResult{Link: cache.CachedLink{ID: link.ID, Code: link.Code, Type: link.Type, Status: link.Status, TargetURL: *link.TargetURL}, TargetURL: *link.TargetURL, Status: http.StatusFound}, nil
+	case model.LinkTypeChannel:
+		if link.TargetURL == nil || *link.TargetURL == "" {
+			return ResolveResult{}, ErrTargetUnavailable
+		}
+		channel, err := s.getChannelConfig(ctx, link.ID)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		cached := cache.CachedLink{ID: link.ID, Code: link.Code, Type: link.Type, Status: link.Status, TargetURL: *link.TargetURL}
+		fillCachedUTM(&cached, channel)
+		return ResolveResult{Link: cached, TargetURL: appendUTM(*link.TargetURL, cached), Status: http.StatusFound}, nil
+	case model.LinkTypeLiveQR:
+		landingURL, err := s.landingURL(ctx, link)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		return ResolveResult{Link: cache.CachedLink{ID: link.ID, Code: link.Code, Type: link.Type, Status: link.Status, TargetURL: landingURL}, TargetURL: landingURL, Status: http.StatusFound}, nil
+	default:
+		return ResolveResult{}, ErrUnsupportedLink
+	}
+}
+
 func (s *LinkService) Resolve(ctx context.Context, code string) (ResolveResult, error) {
 	cached, err := s.cache.Get(ctx, code)
 	if err == nil {
@@ -292,11 +414,20 @@ func (s *LinkService) Resolve(ctx context.Context, code string) (ResolveResult, 
 	}
 
 	var link model.Link
-	dbErr := s.db.WithContext(ctx).Where("code = ?", code).First(&link).Error
+	dbErr := s.db.WithContext(ctx).Where("code = ? AND deleted_at IS NULL", code).First(&link).Error
 	if errors.Is(dbErr, gorm.ErrRecordNotFound) {
-		return ResolveResult{}, ErrLinkNotFound
+		// 查别名表：旧码自动跳转到新码
+		var alias model.LinkCodeAlias
+		aliasErr := s.db.WithContext(ctx).Where("old_code = ?", code).First(&alias).Error
+		if aliasErr != nil {
+			return ResolveResult{}, ErrLinkNotFound
+		}
+		dbErr = s.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", alias.LinkID).First(&link).Error
+		if dbErr != nil {
+			return ResolveResult{}, ErrLinkNotFound
+		}
 	}
-	if dbErr != nil {
+	if dbErr != nil && !errors.Is(dbErr, gorm.ErrRecordNotFound) {
 		return ResolveResult{}, dbErr
 	}
 
@@ -386,6 +517,10 @@ func (s *LinkService) landingURL(ctx context.Context, link model.Link) (string, 
 
 func (s *LinkService) createRoutingStrategy(tx *gorm.DB, linkID uint64, input *StrategyInput, linkType string) error {
 	if linkType != model.LinkTypeLiveQR {
+		return nil
+	}
+	// kami 提取页无需轮换目标
+	if input == nil || len(input.Targets) == 0 {
 		return nil
 	}
 	return s.routing.CreateStrategy(tx, linkID, input)

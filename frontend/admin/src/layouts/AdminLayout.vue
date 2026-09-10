@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue';
+import { computed, h, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   BarChart3,
@@ -26,29 +26,43 @@ const message = useMessage();
 const collapsed = ref(false);
 
 const nav = [
-  { key: 'dashboard', label: '概览', icon: LayoutDashboard, to: '/' },
-  { key: 'links', label: '链接', icon: Link2, to: '/links' },
-  { key: 'share-cards', label: '微信分享卡片', icon: Link2, to: '/share-cards' },
-  { key: 'domains', label: '域名', icon: Globe2, to: '/domains' },
-  { key: 'landing-pages', label: '落地页', icon: LayoutTemplate, to: '/landing-pages' },
-  { key: 'stats', label: '统计', icon: BarChart3, to: '/stats' },
-  { key: 'api-keys', label: '开放 API', icon: Key, to: '/api-keys' },
-  { key: 'kami', label: '卡密分发', icon: Key, to: '/kami' },
-  { key: 'users', label: '账号与权限', icon: Users, to: '/users' },
-  { key: 'profile', label: '个人中心', icon: UserRound, to: '/profile' },
-  { key: 'settings', label: '系统设置', icon: Settings, to: '/settings' },
+  { key: 'dashboard', label: '概览', icon: LayoutDashboard, to: '/', adminOnly: false },
+  { key: 'links', label: '链接', icon: Link2, to: '/links', adminOnly: false },
+  { key: 'share-cards', label: '微信分享卡片', icon: Link2, to: '/share-cards', adminOnly: false },
+  { key: 'domains', label: '域名', icon: Globe2, to: '/domains', adminOnly: true },
+  { key: 'landing-pages', label: '落地页', icon: LayoutTemplate, to: '/landing-pages', adminOnly: false },
+  { key: 'stats', label: '统计', icon: BarChart3, to: '/stats', adminOnly: false },
+  { key: 'visitors', label: '访客记录', icon: BarChart3, to: '/visitors', adminOnly: false },
+  { key: 'api-keys', label: '开放 API', icon: Key, to: '/api-keys', adminOnly: true },
+  { key: 'kami', label: '卡密分发', icon: Key, to: '/kami', adminOnly: true },
+  { key: 'users', label: '账号与权限', icon: Users, to: '/users', adminOnly: true },
+  { key: 'profile', label: '个人中心', icon: UserRound, to: '/profile', adminOnly: false },
+  { key: 'settings', label: '系统设置', icon: Settings, to: '/settings', adminOnly: true },
 ];
 
-const menuOptions: MenuOption[] = nav.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: () => h(NIcon, { size: 18 }, { default: () => h(item.icon) }),
-}));
+const isAdmin = computed(() => auth.isSuperAdmin || auth.user?.role === 'admin');
+const visibleNav = computed(() => nav.filter((item) => !item.adminOnly || isAdmin.value));
+
+const menuOptions = computed<MenuOption[]>(() =>
+  visibleNav.value.map((item) => ({
+    key: item.key,
+    label: item.label,
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(item.icon) }),
+  })),
+);
 
 const activeKey = computed(() => (route.name as string) || 'dashboard');
 const pageTitle = computed(() => (route.meta.title as string) || '');
 const pageSubtitle = computed(() => (route.meta.subtitle as string) || '集中管理链接、域名与访问数据');
-const publicEntryUrl = '/links';
+const publicEntryUrl = ref('');
+
+onMounted(async () => {
+  try {
+    const { request } = await import('../api');
+    const data = await request<{ configs: Record<string, string> }>('/api/admin/configs');
+    publicEntryUrl.value = data.configs?.['public.base_url'] || '';
+  } catch { /* ignore */ }
+});
 
 const roleLabel = computed(() => {
   const role = auth.user?.role;
@@ -73,7 +87,7 @@ async function handleUserMenu(key: string) {
 }
 
 function handleMenuSelect(key: string) {
-  const target = nav.find((item) => item.key === key);
+  const target = visibleNav.value.find((item) => item.key === key);
   if (target) router.push(target.to);
 }
 </script>
@@ -109,7 +123,7 @@ function handleMenuSelect(key: string) {
       />
 
       <div class="sider-footer">
-        <NButton v-if="!collapsed" text tag="a" :href="publicEntryUrl" target="_blank" class="public-link">
+        <NButton v-if="!collapsed && publicEntryUrl" text tag="a" :href="publicEntryUrl" target="_blank" class="public-link">
           <template #icon><ExternalLink :size="14" /></template>
           查看访问地址
         </NButton>

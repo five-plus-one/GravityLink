@@ -37,6 +37,7 @@ const resetBusy = ref(false);
 
 const form = reactive({
   siteName: 'GravityLink',
+  publicBaseURL: '',
   homeTitle: '链接服务正在运行',
   homeMessage: '这是短链接访问入口，请使用完整短链接访问目标内容。',
   notFoundTitle: '链接不存在或已失效',
@@ -67,6 +68,7 @@ onMounted(async () => {
     const data = await getSystemConfigs();
     authInfo.value = data.auth;
     form.siteName = data.configs['public.site_name'] || form.siteName;
+    form.publicBaseURL = data.configs['public.base_url'] || '';
     form.homeTitle = data.configs['public.home.title'] || form.homeTitle;
     form.homeMessage = data.configs['public.home.message'] || form.homeMessage;
     form.notFoundTitle = data.configs['public.not_found.title'] || form.notFoundTitle;
@@ -89,6 +91,7 @@ async function save() {
   try {
     await updateSystemConfigs({
       'public.site_name': form.siteName,
+      'public.base_url': form.publicBaseURL.trim(),
       'public.home.title': form.homeTitle,
       'public.home.message': form.homeMessage,
       'public.not_found.title': form.notFoundTitle,
@@ -152,7 +155,7 @@ async function executeReset() {
             <p class="muted">首页、未知短码和过期链接都会使用这些文案</p>
           </div>
           <div class="card-actions">
-            <NButton text tag="a" href="/" target="_blank">
+            <NButton v-if="form.publicBaseURL" text tag="a" :href="form.publicBaseURL" target="_blank">
               <template #icon><ExternalLink :size="14" /></template>
               预览公开入口
             </NButton>
@@ -167,6 +170,9 @@ async function executeReset() {
           <div class="form-grid">
             <NFormItem label="站点名称"><NInput v-model:value="form.siteName" /></NFormItem>
             <NFormItem label="页脚"><NInput v-model:value="form.footer" /></NFormItem>
+            <NFormItem label="公开访问地址" class="span-2">
+              <NInput v-model:value="form.publicBaseURL" placeholder="如 https://s.example.com 或 http://localhost:18080" />
+            </NFormItem>
             <NFormItem label="首页标题" class="span-2"><NInput v-model:value="form.homeTitle" /></NFormItem>
             <NFormItem label="首页说明" class="span-2"><NInput v-model:value="form.homeMessage" type="textarea" :rows="3" /></NFormItem>
             <NFormItem label="链接不存在标题" class="span-2"><NInput v-model:value="form.notFoundTitle" /></NFormItem>

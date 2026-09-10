@@ -13,6 +13,46 @@ import (
 )
 
 func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
+	// 访客记录查询
+	group.GET("/stats/visitors", func(c *gin.Context) {
+		q := service.VisitorLogQuery{
+			Keyword: c.Query("keyword"),
+		}
+		if v := c.Query("link_id"); v != "" {
+			q.LinkID, _ = strconv.ParseUint(v, 10, 64)
+		}
+		if v := c.Query("start"); v != "" {
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				q.Start = t
+			}
+		}
+		if v := c.Query("end"); v != "" {
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				q.End = t.Add(24*time.Hour - time.Second)
+			}
+		}
+		q.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "50"))
+		q.Offset, _ = strconv.Atoi(c.DefaultQuery("offset", "0"))
+		data, err := stats.ListVisitors(c.Request.Context(), q)
+		writeStatResult(c, data, err)
+	})
+
+	// 全局聚合统计（概览页用）
+	group.GET("/stats/overview/summary", func(c *gin.Context) {
+		data, err := stats.SummaryAll(c.Request.Context())
+		writeStatResult(c, data, err)
+	})
+	group.GET("/stats/overview/daily", func(c *gin.Context) {
+		start, end := parseDateRange(c)
+		data, err := stats.DailyAll(c.Request.Context(), start, end)
+		writeStatResult(c, data, err)
+	})
+	group.GET("/stats/overview/hourly", func(c *gin.Context) {
+		date := parseDate(c.DefaultQuery("date", time.Now().Format("2006-01-02")), time.Now())
+		data, err := stats.HourlyAll(c.Request.Context(), date)
+		writeStatResult(c, data, err)
+	})
+
 	group.GET("/stats/:link_id/summary", func(c *gin.Context) {
 		linkID, ok := parseLinkID(c)
 		if !ok {

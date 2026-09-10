@@ -28,6 +28,10 @@ const createForm = reactive({
   title: '', type: '卡密', password: '', repeatPolicy: 'never' as 'never' | 'allow', repeatInterval: 60,
 });
 
+function resetCreateForm() {
+  Object.assign(createForm, { title: '', type: '卡密', password: '', repeatPolicy: 'never', repeatInterval: 60 });
+}
+
 // 项目详情
 const detailProject = ref<KamiProject | null>(null);
 const items = ref<KamiItem[]>([]);
@@ -132,7 +136,7 @@ async function createProject() {
         <div><strong>卡密分发</strong><p class="muted">管理提取项目、导入卡密与查看提取记录</p></div>
         <div class="card-actions">
           <NButton :loading="loading" @click="loadProjects"><template #icon><RefreshCw :size="16" /></template></NButton>
-          <NButton v-if="canWrite" type="primary" @click="createForm = { title:'', type:'卡密', password:'', repeatPolicy:'never', repeatInterval:60 }; modalError=''; showCreate = true"><template #icon><Plus :size="16" /></template>创建项目</NButton>
+          <NButton v-if="canWrite" type="primary" @click="resetCreateForm(); modalError=''; showCreate = true"><template #icon><Plus :size="16" /></template>创建项目</NButton>
         </div>
       </div>
     </template>
@@ -149,7 +153,7 @@ async function createProject() {
         </div>
         <div class="bar-track"><div class="bar-fill" :style="{width: (p.issued+p.remaining? Math.round(p.issued/(p.issued+p.remaining)*100):0)+'%'}"></div></div>
       </NCard>
-      <div v-if="canWrite" class="project-card add-card" @click="createForm = { title:'', type:'卡密', password:'', repeatPolicy:'never', repeatInterval:60 }; showCreate = true">
+      <div v-if="canWrite" class="project-card add-card" @click="resetCreateForm(); showCreate = true">
         + 创建项目
       </div>
     </div>

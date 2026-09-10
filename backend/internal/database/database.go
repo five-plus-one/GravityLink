@@ -58,6 +58,8 @@ func EnsureSchema(db *gorm.DB) error {
 		&model.KamiProject{},
 		&model.KamiItem{},
 		&model.KamiIssuance{},
+		// 旧码别名：换码后旧码自动跳转
+		&model.LinkCodeAlias{},
 	}
 	if !db.Migrator().HasTable(&model.Link{}) {
 		models = append(models,
@@ -84,13 +86,14 @@ func EnsureSchema(db *gorm.DB) error {
 			}
 		}
 	}
-	// P1 已有表新列：Link（UA 访问限制+客服在线时段）、AccessLog（来源 APP）
+	// P1 已有表新列：Link（UA 访问限制+客服在线时段+旧版ID）、AccessLog（来源 APP）
 	for _, col := range []struct {
 		Model interface{}
 		Name  string
 	}{
 		{&model.Link{}, "AccessRule"},
 		{&model.Link{}, "OnlineSchedule"},
+		{&model.Link{}, "LegacyID"},
 		{&model.AccessLog{}, "SourceApp"},
 	} {
 		if !db.Migrator().HasColumn(col.Model, col.Name) {

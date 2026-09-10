@@ -4,10 +4,11 @@ import "testing"
 
 func TestManagedUploadURLNormalization(t *testing.T) {
 	for input, want := range map[string]string{
-		"http://127.0.0.1:18080/uploads/group.png?old=1": "/uploads/group.png",
+		"http://127.0.0.1:18080/uploads/group.png?old=1": "/uploads/group.png?old=1",
 		"http://localhost:18080/uploads/group.png":       "/uploads/group.png",
 		"https://cdn.example.com/uploads/group.png":      "https://cdn.example.com/uploads/group.png",
 		"/uploads/group.png":                             "/uploads/group.png",
+		"http://127.0.0.1:18080/uploads/a.png?x=1#frag":  "/uploads/a.png?x=1#frag",
 	} {
 		if got := normalizeManagedUploadURL(input); got != want {
 			t.Fatalf("normalizeManagedUploadURL(%q) = %q, want %q", input, got, want)

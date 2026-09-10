@@ -42,9 +42,10 @@ type Manager struct {
 }
 
 type setupRequest struct {
-	Database databaseInput `json:"database"`
-	Redis    redisInput    `json:"redis"`
-	Auth     authInput     `json:"auth"`
+	Database      databaseInput `json:"database"`
+	Redis         redisInput    `json:"redis"`
+	Auth          authInput     `json:"auth"`
+	PublicBaseURL string        `json:"public_base_url"`
 }
 
 type databaseInput struct {
@@ -367,6 +368,7 @@ func (m *Manager) checkLogto(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		m.logger.Warn("logto discovery request failed", "url", discoveryURL, "error", err)
 		writeError(w, http.StatusBadRequest, 4004, "无法连接 Logto："+err.Error())
 		return
 	}
@@ -416,6 +418,7 @@ func (m *Manager) claimLogto(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := middleware.VerifyToken(r.Context(), cfg, token)
 	if err != nil || identity.Subject == "" {
+		m.logger.Warn("logto claim failed", "error", err, "subject", identity.Subject, "issuer", cfg.LogtoIssuer, "audience", cfg.LogtoAudience, "jwks_url", cfg.LogtoJWKSURL)
 		writeError(w, http.StatusUnauthorized, 4401, "Logto 身份验证失败")
 		return
 	}
@@ -495,6 +498,11 @@ func (m *Manager) testDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer redisClient.Close()
+
+	// 测试通过后保存 draft，使数据库密码在 Logto OAuth 页面跳转后不丢失
+	if err := m.saveDraft(cfg); err != nil {
+		m.logger.Warn("save database draft failed", "error", err)
+	}
 	writeOK(w, map[string]any{"mysql": true, "redis": true, "schema_ready": schemaReady})
 }
 
@@ -513,6 +521,13 @@ func (m *Manager) completeSetup(w http.ResponseWriter, r *http.Request) {
 		m.logger.Error("setup activation failed", "error", err)
 		writeError(w, http.StatusBadRequest, 4003, friendlySetupError(err))
 		return
+	}
+	// 初始化完成后写入公开访问地址等系统配置
+	if pubURL := strings.TrimRight(strings.TrimSpace(input.PublicBaseURL), "/"); pubURL != "" && m.db != nil {
+		configSvc := service.NewSystemConfigService(m.db)
+		_, _ = configSvc.Update(r.Context(), service.SystemConfigInput{
+			Configs: map[string]string{"public.base_url": pubURL},
+		})
 	}
 	writeOK(w, map[string]any{"initialized": true})
 }
@@ -550,7 +565,10 @@ func (m *Manager) configFromInput(input setupRequest) config.Config {
 	cfg.MySQLPort = strings.TrimSpace(input.Database.Port)
 	cfg.MySQLDatabase = strings.TrimSpace(input.Database.Database)
 	cfg.MySQLUser = strings.TrimSpace(input.Database.User)
-	cfg.MySQLPassword = input.Database.Password
+	// 空密码时保留 draft 中已保存的值（Logto OAuth 页面跳转会丢失前端表单状态）
+	if input.Database.Password != "" {
+		cfg.MySQLPassword = input.Database.Password
+	}
 	// params 为空时保留默认值（charset/parseTime 等），避免拼出无参数的 DSN
 	if params := strings.TrimSpace(input.Database.Params); params != "" {
 		cfg.MySQLParams = params
@@ -559,7 +577,9 @@ func (m *Manager) configFromInput(input setupRequest) config.Config {
 	cfg.RedisHost = strings.TrimSpace(input.Redis.Host)
 	cfg.RedisPort = strings.TrimSpace(input.Redis.Port)
 	cfg.RedisAddr = strings.TrimSpace(input.Redis.Addr)
-	cfg.RedisPassword = input.Redis.Password
+	if input.Redis.Password != "" {
+		cfg.RedisPassword = input.Redis.Password
+	}
 	cfg.RedisDB = input.Redis.DB
 	if input.Auth.Mode != "" || input.Auth.Issuer != "" {
 		applyAuthInput(&cfg, input.Auth)

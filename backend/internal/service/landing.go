@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -59,6 +60,21 @@ type noticeContent struct {
 type customContent struct {
 	HTML       string `json:"html"`
 	ThemeColor string `json:"theme_color"`
+}
+
+type kfContent struct {
+	Headline   string `json:"headline"`
+	Subtext    string `json:"subtext"`
+	FooterText string `json:"footer_text"`
+	ThemeColor string `json:"theme_color"`
+	SafetyTip  string `json:"safety_tip"`
+}
+
+type kamiContent struct {
+	Announcement string `json:"announcement"`
+	ButtonText   string `json:"button_text"`
+	ThemeColor   string `json:"theme_color"`
+	ProjectID    uint64 `json:"project_id"`
 }
 
 func NewLandingService(db *gorm.DB, routing *RoutingService, templates *template.Template) *LandingService {
@@ -152,6 +168,10 @@ func (s *LandingService) renderPreviewOf(page model.LandingPage) (string, error)
 		return s.renderNoticePage(page, "")
 	case "custom":
 		return s.renderCustomPage(page)
+	case "kf":
+		return s.renderKfPage(page, "", "", nil)
+	case "kami":
+		return s.renderKamiPage(page)
 	default:
 		return "", ErrInvalidTemplate
 	}
@@ -192,11 +212,26 @@ func (s *LandingService) RenderByCode(ctx context.Context, code string) (string,
 		}
 		html, rerr := s.renderLiveQRPage(page, target.TargetURL)
 		return html, http.StatusOK, link.ID, rerr
+	case "kf":
+		target, err := s.routing.SelectTarget(ctx, link.ID)
+		if err != nil {
+			html, rerr := s.renderUnavailablePage(page.Title)
+			return html, http.StatusOK, link.ID, rerr
+		}
+		wxRemark := ""
+		if target.WxRemark != nil {
+			wxRemark = *target.WxRemark
+		}
+		html, rerr := s.renderKfPage(page, target.TargetURL, wxRemark, link.OnlineSchedule)
+		return html, http.StatusOK, link.ID, rerr
 	case "redirect_notice":
 		html, rerr := s.renderNoticePage(page, derefString(link.TargetURL))
 		return html, http.StatusOK, link.ID, rerr
 	case "custom":
 		html, rerr := s.renderCustomPage(page)
+		return html, http.StatusOK, link.ID, rerr
+	case "kami":
+		html, rerr := s.renderKamiPage(page)
 		return html, http.StatusOK, link.ID, rerr
 	default:
 		return "", http.StatusInternalServerError, 0, ErrInvalidTemplate
@@ -226,7 +261,7 @@ func landingFromInput(input LandingInput) (model.LandingPage, error) {
 
 func validTemplate(template string) bool {
 	switch template {
-	case "liveqr", "redirect_notice", "custom":
+	case "liveqr", "redirect_notice", "custom", "kf", "kami":
 		return true
 	default:
 		return false
@@ -303,6 +338,103 @@ func (s *LandingService) renderCustomPage(page model.LandingPage) (string, error
 	return s.executeTemplate("custom.html", data)
 }
 
+func (s *LandingService) renderKfPage(page model.LandingPage, targetURL, wxRemark string, onlineSchedule *string) (string, error) {
+	var content kfContent
+	_ = json.Unmarshal(page.Content, &content)
+	if content.Headline == "" {
+		content.Headline = page.Title
+	}
+	if content.Subtext == "" {
+		content.Subtext = "长按识别二维码，添加客服微信"
+	}
+	if content.ThemeColor == "" {
+		content.ThemeColor = defaultThemeColor
+	}
+	if content.FooterText == "" {
+		content.FooterText = "工作时间内回复更快"
+	}
+
+	targetURL = normalizeManagedUploadURL(targetURL)
+	online := isOnlineNow(onlineSchedule)
+	data := map[string]interface{}{
+		"Title":      page.Title,
+		"ThemeColor": content.ThemeColor,
+		"Headline":   content.Headline,
+		"Subtext":    content.Subtext,
+		"FooterText": content.FooterText,
+		"SafetyTip":  content.SafetyTip,
+		"TargetURL":  targetURL,
+		"IsImage":    isImageURL(targetURL),
+		"Preview":    targetURL == "",
+		"WxRemark":   wxRemark,
+		"Online":     online,
+	}
+	return s.executeTemplate("kf.html", data)
+}
+
+func (s *LandingService) renderKamiPage(page model.LandingPage) (string, error) {
+	var content kamiContent
+	_ = json.Unmarshal(page.Content, &content)
+	if content.Announcement == "" {
+		content.Announcement = "点击下方按钮领取卡密，领取后请妥善保存。"
+	}
+	if content.ButtonText == "" {
+		content.ButtonText = "立即领取"
+	}
+	if content.ThemeColor == "" {
+		content.ThemeColor = defaultThemeColor
+	}
+
+	data := map[string]interface{}{
+		"Title":        page.Title,
+		"ThemeColor":   content.ThemeColor,
+		"Announcement": content.Announcement,
+		"ButtonText":   content.ButtonText,
+		"ProjectID":    content.ProjectID,
+		"Preview":      content.ProjectID == 0,
+	}
+	return s.executeTemplate("kami.html", data)
+}
+
+// isOnlineNow 判断客服码当前是否在线。
+// schedule 为 Link.OnlineSchedule JSON，格式：
+// {"0":[["09:00","12:00"]],"1":[...]}，key 为周几（0=周日）。
+// 未配置时段时视为全天在线。
+func isOnlineNow(schedule *string) bool {
+	if schedule == nil || strings.TrimSpace(*schedule) == "" {
+		return true
+	}
+	var slots map[string][][2]string
+	if err := json.Unmarshal([]byte(*schedule), &slots); err != nil {
+		return true
+	}
+	now := time.Now()
+	key := strconv.Itoa(int(now.Weekday()))
+	today, ok := slots[key]
+	if !ok || len(today) == 0 {
+		return false
+	}
+	hm := now.Format("15:04")
+	for _, pair := range today {
+		if len(pair) != 2 {
+			continue
+		}
+		start, end := pair[0], pair[1]
+		if start == "" || end == "" {
+			continue
+		}
+		// 支持跨零点时段，例如 22:00-02:00
+		if start <= end {
+			if hm >= start && hm < end {
+				return true
+			}
+		} else if hm >= start || hm < end {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *LandingService) renderUnavailablePage(title string) (string, error) {
 	return s.executeTemplate("unavailable.html", map[string]interface{}{"Title": title})
 }
@@ -340,7 +472,15 @@ func normalizeManagedUploadURL(rawURL string) string {
 	}
 	host := parsed.Hostname()
 	if strings.EqualFold(host, "localhost") || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()) {
-		return parsed.EscapedPath()
+		// 保留 query/fragment（缓存破坏参数等），只去掉 host 前缀
+		out := parsed.EscapedPath()
+		if parsed.RawQuery != "" {
+			out += "?" + parsed.RawQuery
+		}
+		if parsed.Fragment != "" {
+			out += "#" + parsed.Fragment
+		}
+		return out
 	}
 	return rawURL
 }

@@ -41,14 +41,15 @@ const router = createRouter({
         { path: 'share-cards', name: 'share-cards', component: () => import('./views/ShareCardsView.vue'), meta: { title: '微信分享卡片', subtitle: '维护分享内容、封面和公众号配置' } },
         { path: '', name: 'dashboard', component: DashboardView, meta: { title: '数据概览', subtitle: '掌握链接、域名和落地页的运行情况' } },
         { path: 'links', name: 'links', component: LinksView, meta: { title: '链接管理', subtitle: '统一创建与维护短链接、渠道链接和活码' } },
-        { path: 'domains', name: 'domains', component: DomainsView, meta: { title: '域名管理', subtitle: '维护入口、中转与落地域名' } },
+        { path: 'domains', name: 'domains', component: DomainsView, meta: { title: '域名管理', subtitle: '维护入口、中转与落地域名', adminOnly: true } },
         { path: 'landing-pages', name: 'landing-pages', component: LandingPagesView, meta: { title: '落地页', subtitle: '管理公开访问页面与展示模板' } },
         { path: 'stats', name: 'stats', component: StatsView, meta: { title: '数据看板', subtitle: '查看访问趋势、设备与地域分布' } },
-        { path: 'api-keys', name: 'api-keys', component: () => import('./views/APIKeysView.vue'), meta: { title: '开放 API', subtitle: '管理 API Key，通过 Token 或签名创建短链接' } },
-        { path: 'kami', name: 'kami', component: () => import('./views/KamiView.vue'), meta: { title: '卡密分发', subtitle: '管理提取项目、导入卡密与查看提取记录' } },
-        { path: 'users', name: 'users', component: UsersView, meta: { title: '账号与权限', subtitle: '管理后台账号、角色与访问权限' } },
+        { path: 'visitors', name: 'visitors', component: () => import('./views/VisitorsView.vue'), meta: { title: '访客记录', subtitle: '查看全部或指定链接的详细访问明细' } },
+        { path: 'api-keys', name: 'api-keys', component: () => import('./views/APIKeysView.vue'), meta: { title: '开放 API', subtitle: '管理 API Key，通过 Token 或签名创建短链接', adminOnly: true } },
+        { path: 'kami', name: 'kami', component: () => import('./views/KamiView.vue'), meta: { title: '卡密分发', subtitle: '管理提取项目、导入卡密与查看提取记录', adminOnly: true } },
+        { path: 'users', name: 'users', component: UsersView, meta: { title: '账号与权限', subtitle: '管理后台账号、角色与访问权限', adminOnly: true } },
         { path: 'profile', name: 'profile', component: ProfileView, meta: { title: '个人中心', subtitle: '查看当前账号信息与安全状态' } },
-        { path: 'settings', name: 'settings', component: SettingsView, meta: { title: '系统设置', subtitle: '维护站点配置、认证方式与运行参数' } },
+        { path: 'settings', name: 'settings', component: SettingsView, meta: { title: '系统设置', subtitle: '维护站点配置、认证方式与运行参数', adminOnly: true } },
       ],
     },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { public: true, title: '页面不存在' } },
@@ -97,6 +98,10 @@ router.beforeEach(async (to) => {
   if (!auth.loaded) await auth.fetchUser();
   if (!auth.isLoggedIn) {
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } };
+  }
+  // 管理员专属页面：普通用户跳回概览
+  if (to.meta.adminOnly && !auth.isSuperAdmin && auth.user?.role !== 'admin') {
+    return { name: 'dashboard' };
   }
   return true;
 });

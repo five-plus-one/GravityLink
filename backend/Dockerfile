@@ -17,9 +17,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gravitylink ./cmd/server
 
 FROM alpine:3.20
 
-RUN adduser -D -H -u 10001 gravitylink \
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && adduser -D -H -u 10001 gravitylink \
     && mkdir -p /data \
     && chown gravitylink:gravitylink /data
+
+ENV TZ=Asia/Shanghai
 USER gravitylink
 
 WORKDIR /app

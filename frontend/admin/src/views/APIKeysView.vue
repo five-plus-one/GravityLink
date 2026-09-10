@@ -2,7 +2,7 @@
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { Key, Plus, RefreshCw, ShieldCheck, Trash2 } from '@lucide/vue';
 import {
-  NButton, NCard, NDataTable, NDatePicker, NEmpty, NForm, NFormItem, NIcon, NInput,
+  NAlert, NButton, NCard, NDataTable, NDatePicker, NEmpty, NForm, NFormItem, NIcon, NInput,
   NInputNumber, NModal, NPopconfirm, NSelect, NSwitch, NTag, useMessage,
   type DataTableColumns, type FormInst, type FormRules,
 } from 'naive-ui';
@@ -185,9 +185,6 @@ function maskToken(t: string) { return t.length > 12 ? t.slice(0, 10) + '...' + 
           <div class="copy-row"><span class="row-label">Token</span><code class="row-val">{{ createdResult.token }}</code></div>
           <div v-if="createdResult.hmac_secret" class="copy-row"><span class="row-label">Secret</span><code class="row-val">{{ createdResult.hmac_secret }}</code></div>
         </div>
-        <template #footer>
-          <NButton type="primary" @click="showModal = false">我已保存，关闭</NButton>
-        </template>
       </template>
       <template v-else>
         <NForm ref="formRef" :model="form" :rules="rules" label-placement="top">
@@ -200,9 +197,15 @@ function maskToken(t: string) { return t.length > 12 ? t.slice(0, 10) + '...' + 
           <NFormItem label="IP 白名单（逗号分隔多 IP 或 CIDR，留空不限）"><NInput v-model:value="form.ipWhitelist" placeholder="如：1.2.3.4, 10.0.0.0/24" /></NFormItem>
           <NAlert v-if="modalError" type="error">{{ modalError }}</NAlert>
         </NForm>
-        <template #footer>
-          <div style="display:flex;gap:8px;justify-content:flex-end"><NButton @click="showModal=false">取消</NButton><NButton type="primary" :loading="saving" @click="submit">创建</NButton></div>
-        </template>
+      </template>
+      <template #footer>
+        <div v-if="createdResult" style="display:flex;justify-content:flex-end">
+          <NButton type="primary" @click="showModal = false">我已保存，关闭</NButton>
+        </div>
+        <div v-else style="display:flex;gap:8px;justify-content:flex-end">
+          <NButton @click="showModal=false">取消</NButton>
+          <NButton type="primary" :loading="saving" @click="submit">创建</NButton>
+        </div>
       </template>
     </NModal>
   </div>

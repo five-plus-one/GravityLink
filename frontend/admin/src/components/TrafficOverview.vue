@@ -8,13 +8,13 @@ import type { LinkItem } from '../api';
 import { fillDailyWindow, useLinkTraffic } from '../composables/useLinkTraffic';
 
 const props = defineProps<{ links: LinkItem[] }>();
-const selected = ref<number | null>(null);
+const selected = ref<number>(0); // 0 = 全部链接
 const days = ref(7);
 const { summary, daily, hourly, loading, error, load } = useLinkTraffic();
-const options = computed(() => props.links.map((link) => ({ label: `${link.Title || '未命名'} · ${link.Code}`, value: link.ID })));
-watch(() => props.links, (links) => {
-  if (!links.some((link) => link.ID === selected.value)) selected.value = links[0]?.ID ?? null;
-}, { immediate: true });
+const options = computed(() => [
+  { label: '全部链接', value: 0 },
+  ...props.links.map((link) => ({ label: `${link.Title || '未命名'} · ${link.Code}`, value: link.ID })),
+]);
 watch(selected, (id) => { void load(id); }, { immediate: true });
 const metrics = computed(() => [
   { label: '今日访问', value: summary.value?.today_pv, icon: Eye, note: '访问次数 · PV' },
@@ -52,10 +52,10 @@ const hourlyOption = computed(() => chart(hourly.value.map((p) => `${String(p.ho
 <template>
   <section class="traffic" aria-label="链接访问看板">
     <div class="traffic-toolbar">
-      <div><h2>访问看板</h2><p class="muted">当前所选链接的访问数据</p></div>
+      <div><h2>访问看板</h2><p class="muted">{{ selected === 0 ? '全部链接的汇总访问数据' : '当前所选链接的访问数据' }}</p></div>
       <div class="traffic-controls">
         <NSelect v-model:value="selected" class="link-select" :options="options" filterable placeholder="选择链接" aria-label="选择统计链接" />
-        <NButton :loading="loading" :disabled="selected === null" aria-label="刷新访问统计" @click="load(selected)"><template #icon><RefreshCw :size="16" /></template></NButton>
+        <NButton :loading="loading" aria-label="刷新访问统计" @click="load(selected)"><template #icon><RefreshCw :size="16" /></template></NButton>
       </div>
     </div>
     <NCard v-if="selected === null"><NEmpty description="创建链接后，即可在这里查看访问数据" /></NCard>

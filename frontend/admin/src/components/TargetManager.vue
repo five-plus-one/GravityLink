@@ -5,7 +5,7 @@ import { request } from '../api';
 import MaterialPicker from './MaterialPicker.vue';
 import BatchAdd from './BatchAdd.vue';
 const props=defineProps<{linkId:number;origin:string}>();
-type Target={ID:number;Label:string;TargetURL:string;Weight:number;ScanLimit:number|null;ScanCount:number;Priority:number;Status:string;ExpireAt:string|null;Owner:string};
+type Target={ID:number;Label:string;TargetURL:string;Weight:number;ScanLimit:number|null;ScanCount:number;Priority:number;Status:string;ExpireAt:string|null;Owner:string;WxRemark:string|null};
 const show=ref(false),busy=ref(false),mode=ref('round_robin');
 const items=ref<Target[]>([]),editing=ref<Target|null>(null),expiry=ref<number|null>(null);
 const message=useMessage();
@@ -25,8 +25,8 @@ async function toggle(t:Target){if(busy.value)return;busy.value=true;try{await r
 watch(()=>editing.value?.TargetURL,()=>{imageError.value=false;});
 async function load(){const r=await request<{mode:string;items:Target[]}>(`/api/admin/links/${props.linkId}/targets`);items.value=r.items;mode.value=r.mode;}
 async function open(){try{await load();show.value=true;editing.value=null;}catch(e){message.error(String(e));}}
-function edit(t?:Target){editing.value=t?{...t}:{ID:0,Label:'',TargetURL:'',Weight:1,ScanLimit:null,ScanCount:0,Priority:0,Status:'active',ExpireAt:null,Owner:''};expiry.value=t?.ExpireAt?Date.parse(t.ExpireAt):null;}
-async function save(){if(!editing.value||busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});await load();editing.value=null;message.success('二维码配置已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
+function edit(t?:Target){editing.value=t?{...t,WxRemark:t.WxRemark||''}:{ID:0,Label:'',TargetURL:'',Weight:1,ScanLimit:null,ScanCount:0,Priority:0,Status:'active',ExpireAt:null,Owner:'',WxRemark:''};expiry.value=t?.ExpireAt?Date.parse(t.ExpireAt):null;}
+async function save(){if(!editing.value||busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,WxRemark:editing.value.WxRemark||undefined,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});await load();editing.value=null;message.success('二维码配置已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
 async function saveMode(){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/strategy`,{method:'PUT',body:JSON.stringify({mode:mode.value})});message.success('展示模式已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
 </script>
 <template>
@@ -45,13 +45,14 @@ async function saveMode(){if(busy.value)return;busy.value=true;try{await request
   <NAlert>顺序模式优先级越高越先展示，达到阈值后切换；阈值不限时会持续使用该码。加权随机按权重分配，不按优先级。停用、到期、满额目标不参与分发。全部耗尽时访客会看到「暂无可用群」提示。</NAlert>
   <p>共 {{items.length}} 个二维码，当前 <b>{{available}}</b> 个可分发。<NButton :disabled="busy" @click="refresh">刷新状态</NButton></p>
   <NAlert v-if="!available" type="warning">暂无可分发二维码，请添加二维码，或检查启停、阈值和到期时间。需要重置阈值计数时请先停用该二维码。</NAlert>
-  <div style="overflow:auto"><table><thead><tr><th>预览</th><th>名称</th><th>访问 / 阈值</th><th>权重 / 优先级</th><th>群主</th><th>到期</th><th>状态</th><th>操作</th></tr></thead><tbody>
+  <div style="overflow:auto"><table><thead><tr><th>预览</th><th>名称</th><th>访问 / 阈值</th><th>权重 / 优先级</th><th>群主</th><th>微信号</th><th>到期</th><th>状态</th><th>操作</th></tr></thead><tbody>
    <tr v-for="t in items" :key="t.ID">
     <td><img v-if="t.TargetURL" :src="t.TargetURL" alt="" style="width:36px;height:36px;object-fit:contain;border:1px solid #e6ecf5;border-radius:6px;display:block"/><span v-else class="muted">—</span></td>
     <td>{{t.Label||'未命名'}}</td>
     <td>{{t.ScanCount}} / {{t.ScanLimit??'无限制'}}</td>
     <td>{{mode==='weighted'?`权重 ${t.Weight}`:'—'}} {{t.Priority?` · P${t.Priority}`:''}}</td>
     <td>{{t.Owner||'未设置'}}</td>
+    <td>{{t.WxRemark||'—'}}</td>
     <td>{{t.ExpireAt?new Date(t.ExpireAt).toLocaleString():'不限'}}</td>
     <td><span :class="statePill(t)">{{state(t)}}</span></td>
     <td>
@@ -67,7 +68,7 @@ async function saveMode(){if(busy.value)return;busy.value=true;try{await request
    <NFormItem label="二维码图片 URL"><NInput v-model:value="editing.TargetURL"/></NFormItem><MaterialPicker relative :origin="origin" @select="editing!.TargetURL=$event"/>
    <img v-if="editing.TargetURL" v-show="!imageError" :src="editing.TargetURL" alt="目标二维码预览" style="display:block;width:160px;height:160px;object-fit:contain;margin:16px 0" @error="imageError=true" @load="imageError=false"/>
    <NAlert v-if="imageError" type="error">二维码图片加载失败，请检查地址或从素材库重新上传。</NAlert>
-   <div class="fields"><NFormItem label="扫码阈值"><NInputNumber v-model:value="editing.ScanLimit" :min="1" clearable/></NFormItem><NFormItem label="权重（加权随机模式生效）"><NInputNumber v-model:value="editing.Weight" :min="1"/></NFormItem><NFormItem label="优先级（顺序模式生效）"><NInputNumber v-model:value="editing.Priority"/></NFormItem><NFormItem label="群主"><NInput v-model:value="editing.Owner"/></NFormItem><NFormItem label="到期时间"><NDatePicker v-model:value="expiry" type="datetime" clearable/></NFormItem><NFormItem label="状态"><NSelect v-model:value="editing.Status" :options="[{label:'启用',value:'active'},{label:'停用',value:'disabled'}]"/></NFormItem></div>
+   <div class="fields"><NFormItem label="扫码阈值"><NInputNumber v-model:value="editing.ScanLimit" :min="1" clearable/></NFormItem><NFormItem label="权重（加权随机模式生效）"><NInputNumber v-model:value="editing.Weight" :min="1"/></NFormItem><NFormItem label="优先级（顺序模式生效）"><NInputNumber v-model:value="editing.Priority"/></NFormItem><NFormItem label="群主"><NInput v-model:value="editing.Owner"/></NFormItem><NFormItem label="微信号（客服码展示页可复制）"><NInput v-model:value="editing.WxRemark" placeholder="如 wxid_xxx 或手机号"/></NFormItem><NFormItem label="到期时间"><NDatePicker v-model:value="expiry" type="datetime" clearable/></NFormItem><NFormItem label="状态"><NSelect v-model:value="editing.Status" :options="[{label:'启用',value:'active'},{label:'停用',value:'disabled'}]"/></NFormItem></div>
    <NButton type="primary" :loading="busy" @click="save">保存二维码</NButton><NButton @click="editing=null">取消编辑</NButton>
   </section>
  </NModal>

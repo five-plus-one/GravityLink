@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth';
+import { clearSession, getAccessToken } from './auth';
 
 export interface LinkItem {
   ID: number;
@@ -30,6 +30,7 @@ export interface CreateLinkPayload {
   target_url: string;
   title?: string;
   access_rule?: 'none' | 'wechat' | 'ios' | 'android' | 'mobile' | 'pc';
+  online_schedule?: string;
   expire_at?: string | null;
   channel?: {
     utm_source?: string;
@@ -47,6 +48,7 @@ export interface CreateLinkPayload {
       target_url: string;
       weight?: number;
       scan_limit?: number;
+      wx_remark?: string;
     }>;
   };
 }
@@ -56,6 +58,9 @@ export interface UpdateLinkPayload {
   title?: string;
   expire_at?: string | null;
   status?: 'active' | 'disabled';
+  online_schedule?: string;
+  code?: string;
+  entry_domain_id?: number;
 }
 
 export interface DomainItem {
@@ -82,7 +87,7 @@ export interface CreateDomainPayload {
 export interface LandingPageItem {
   Content?: Record<string,unknown>;
   ID: number;
-  Template: 'liveqr' | 'redirect_notice' | 'custom';
+  Template: 'liveqr' | 'redirect_notice' | 'custom' | 'kf' | 'kami';
   Title: string;
   DomainID: number;
 }
@@ -93,7 +98,7 @@ export interface LandingPageListData {
 }
 
 export interface CreateLandingPagePayload {
-  template: 'liveqr' | 'redirect_notice' | 'custom';
+  template: 'liveqr' | 'redirect_notice' | 'custom' | 'kf' | 'kami';
   title: string;
   domain_id: number;
   content: Record<string, unknown>;
@@ -223,6 +228,18 @@ export async function getSummaryStats(linkId: number): Promise<SummaryStats> {
   return request<SummaryStats>(`/api/v1/stats/${linkId}/summary`);
 }
 
+export async function getOverviewSummary(): Promise<SummaryStats> {
+  return request<SummaryStats>('/api/v1/stats/overview/summary');
+}
+
+export async function getOverviewDaily(query = ''): Promise<DailyPoint[]> {
+  return request<DailyPoint[]>(`/api/v1/stats/overview/daily${query}`);
+}
+
+export async function getOverviewHourly(): Promise<HourlyPoint[]> {
+  return request<HourlyPoint[]>('/api/v1/stats/overview/hourly');
+}
+
 export async function getDailyStats(linkId: number, query = ''): Promise<DailyPoint[]> {
   return request<DailyPoint[]>(`/api/v1/stats/${linkId}/daily${query}`);
 }
@@ -237,6 +254,47 @@ export async function getGeoStats(linkId: number, query = ''): Promise<LabelValu
 
 export async function getDeviceStats(linkId: number, query = ''): Promise<DeviceStats> {
   return request<DeviceStats>(`/api/v1/stats/${linkId}/device${query}`);
+}
+
+export interface VisitorLogItem {
+  id: number;
+  link_id: number;
+  link_code: string;
+  link_title: string;
+  visited_at: string;
+  ip: string;
+  country: string;
+  province: string;
+  city: string;
+  device: string;
+  os: string;
+  browser: string;
+  referer: string;
+  source_app: string;
+}
+
+export interface VisitorLogResult {
+  items: VisitorLogItem[];
+  total: number;
+}
+
+export async function listVisitors(params: {
+  link_id?: number;
+  start?: string;
+  end?: string;
+  keyword?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<VisitorLogResult> {
+  const qs = new URLSearchParams();
+  if (params.link_id) qs.set('link_id', String(params.link_id));
+  if (params.start) qs.set('start', params.start);
+  if (params.end) qs.set('end', params.end);
+  if (params.keyword) qs.set('keyword', params.keyword);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString();
+  return request<VisitorLogResult>(`/api/v1/stats/visitors${query ? '?' + query : ''}`);
 }
 
 export async function resetLinkStats(linkId: number): Promise<void> {
@@ -295,6 +353,13 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   });
   const body = (await response.json()) as ApiResponse<T>;
   if (!response.ok || body.code !== 0) {
+    // 401：token 失效，清除会话并跳登录
+    if (response.status === 401 && !path.includes('/auth/')) {
+      clearSession();
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/setup')) {
+        window.location.href = '/login';
+      }
+    }
     throw new Error(body.message || 'request failed');
   }
   return body.data;

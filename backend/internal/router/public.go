@@ -17,6 +17,10 @@ func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *servic
 	public := engine.Group("/")
 	public.Use(middleware.HostRouter(domains, deps.Config, pages))
 	public.GET("/", publicHome(pages))
+
+	// 旧版 URL 兼容路由（必须在 /:code 之前注册）
+	registerLegacyRoutes(public, deps, links, landings, pages, recorder)
+
 	public.GET("/:code", dispatchByDomainType(deps, links, landings, pages, recorder))
 	engine.NoRoute(func(c *gin.Context) {
 		if isAPIPath(c.Request.URL.Path) {
@@ -26,6 +30,154 @@ func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *servic
 		html, status := pages.NotFound(c.Request.Context())
 		c.Data(status, "text/html; charset=utf-8", []byte(html))
 	})
+}
+
+// registerLegacyRoutes 注册旧版引流宝 URL 格式的兼容路由。
+// 旧版格式：
+//   /s/?key={code}                      短链/活码/渠道码统一入口
+//   /s/dwz.php?key={code}               短链入口
+//   /common/dwz/redirect/?key={code}    短链中转
+//   /common/channel/redirect/?cid={id}  渠道码中转（数字ID）
+//   /common/qun/redirect/?qid={id}      群活码中转（数字ID）
+//   /common/shareCard/redirect/?sid={id} 分享卡片（数字ID）
+//   /common/kf/redirect/?kid={id}       客服码中转（数字ID）
+func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *service.LinkService, landings *service.LandingService, pages *service.PublicPageService, recorder *service.AccessRecorder) {
+	// /s/ 和 /s/dwz.php：按 code 查找并重定向
+	// 同时支持 /s/?key=xxx（查询参数）和 /s/xxx（路径参数，nginx rewrite 等效）
+	handleLegacyByCode := func(c *gin.Context) {
+		code := strings.TrimSpace(c.Query("key"))
+		if code == "" {
+			code = strings.TrimSpace(c.Param("key"))
+		}
+		if code == "" {
+			writeLegacyNotFound(c, pages)
+			return
+		}
+		result, err := links.LegacyResolve(c.Request.Context(), code, false)
+		if err != nil {
+			writeResolveError(c, err, pages)
+			return
+		}
+		legacyRedirect(c, deps, result, pages, recorder)
+	}
+	public.GET("/s/", handleLegacyByCode)
+	public.GET("/s/dwz.php", handleLegacyByCode)
+	public.GET("/s/:key", handleLegacyByCode)
+
+	// /common/dwz/redirect/?key={code}：短链中转，按 code 查找
+	public.GET("/common/dwz/redirect/", handleLegacyByCode)
+	public.GET("/common/dwz/redirect/lx/", handleLegacyByCode) // 轮询域名格式
+
+	// /common/channel/redirect/?cid={id}：渠道码，按 legacy_id 查找
+	public.GET("/common/channel/redirect/", func(c *gin.Context) {
+		legacyIDRedirect(c, deps, links, landings, pages, recorder, "cid")
+	})
+
+	// /common/qun/redirect/?qid={id}：群活码，按 legacy_id 查找
+	public.GET("/common/qun/redirect/", func(c *gin.Context) {
+		legacyIDRedirect(c, deps, links, landings, pages, recorder, "qid")
+	})
+
+	// /common/shareCard/redirect/?sid={id}：分享卡片，按 legacy_id 查找
+	public.GET("/common/shareCard/redirect/", func(c *gin.Context) {
+		legacyIDRedirect(c, deps, links, landings, pages, recorder, "sid")
+	})
+
+	// /common/kf/redirect/?kid={id}：客服码，按 legacy_id 查找
+	public.GET("/common/kf/redirect/", func(c *gin.Context) {
+		legacyIDRedirect(c, deps, links, landings, pages, recorder, "kid")
+	})
+
+	// 旧版落地页格式（在落地域上直接访问）
+	// /common/channel/?cid={id} → 渠道码落地（302 到目标）
+	// /common/qun/?qid={id} → 群活码落地（渲染二维码页）
+	// /common/kf/?kid={id} → 客服码落地（渲染客服页）
+	// /common/dwz/?key={code} → 短链落地（302 到目标）
+	// /common/shareCard/?sid={id} → 分享卡片落地（302 到目标）
+	handleLegacyLanding := func(paramName string, byID bool) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			idStr := strings.TrimSpace(c.Query(paramName))
+			if idStr == "" {
+				writeLegacyNotFound(c, pages)
+				return
+			}
+			// 先解析出链接 code，再走标准落地页渲染
+			result, err := links.LegacyResolve(c.Request.Context(), idStr, byID)
+			if err != nil {
+				writeResolveError(c, err, pages)
+				return
+			}
+			// 活码/kf：渲染落地页；短链/渠道：302
+			if result.Link.Type == model.LinkTypeLiveQR {
+				html, status, linkID, rerr := landings.RenderByCode(c.Request.Context(), result.Link.Code)
+				if rerr != nil {
+					if errors.Is(rerr, service.ErrNoRoutingTarget) {
+						deps.Notifier.SendAsync("qr_exhausted:"+result.Link.Code, "⚠ 活码二维码已全部耗尽", "活码 "+result.Link.Code+" 的所有二维码达到阈值/到期/停用。")
+					}
+					writeResolveError(c, rerr, pages)
+					return
+				}
+				if linkID > 0 {
+					recorder.RecordAsync(service.AccessEvent{
+						LinkID: linkID, IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+						Referer: c.Request.Referer(), VisitedAt: deps.Config.Now(),
+					})
+				}
+				c.Header("Cache-Control", "no-store")
+				c.Data(status, "text/html; charset=utf-8", []byte(html))
+				return
+			}
+			// 短链/渠道：302 到目标
+			legacyRedirect(c, deps, result, pages, recorder)
+		}
+	}
+	public.GET("/common/channel/", handleLegacyLanding("cid", true))
+	public.GET("/common/qun/", handleLegacyLanding("qid", true))
+	public.GET("/common/kf/", handleLegacyLanding("kid", true))
+	public.GET("/common/dwz/", handleLegacyLanding("key", false))
+	public.GET("/common/shareCard/", handleLegacyLanding("sid", true))
+}
+
+// legacyIDRedirect 按旧版数字 ID 查找链接并重定向。
+func legacyIDRedirect(c *gin.Context, deps Dependencies, links *service.LinkService, landings *service.LandingService, pages *service.PublicPageService, recorder *service.AccessRecorder, paramName string) {
+	idStr := strings.TrimSpace(c.Query(paramName))
+	if idStr == "" {
+		writeLegacyNotFound(c, pages)
+		return
+	}
+	result, err := links.LegacyResolve(c.Request.Context(), idStr, true)
+	if err != nil {
+		writeResolveError(c, err, pages)
+		return
+	}
+	legacyRedirect(c, deps, result, pages, recorder)
+}
+
+// legacyRedirect 执行旧版 URL 的重定向逻辑。
+func legacyRedirect(c *gin.Context, deps Dependencies, result service.ResolveResult, pages *service.PublicPageService, recorder *service.AccessRecorder) {
+	// UA 限制检查
+	if allowed, hint := service.CheckAccessRule(c.Request.UserAgent(), result.Link.AccessRule); !allowed {
+		html, status := pages.AccessDenied(c.Request.Context(), hint)
+		c.Data(status, "text/html; charset=utf-8", []byte(html))
+		return
+	}
+	// 活码只由落地域渲染时记一次访问日志
+	if result.Link.Type != model.LinkTypeLiveQR {
+		recorder.RecordAsync(service.AccessEvent{
+			LinkID:     result.Link.ID,
+			IP:         c.ClientIP(),
+			UserAgent:  c.Request.UserAgent(),
+			Referer:    c.Request.Referer(),
+			VisitedAt:  deps.Config.Now(),
+			ViaTransit: false,
+		})
+	}
+	c.Redirect(http.StatusMovedPermanently, result.TargetURL)
+}
+
+func writeLegacyNotFound(c *gin.Context, pages *service.PublicPageService) {
+	html, status := pages.NotFound(c.Request.Context())
+	c.Data(status, "text/html; charset=utf-8", []byte(html))
 }
 
 func publicHome(pages *service.PublicPageService) gin.HandlerFunc {

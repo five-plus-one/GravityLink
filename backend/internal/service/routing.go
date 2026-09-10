@@ -49,6 +49,7 @@ type RoutingTargetInput struct {
 	TargetURL string `json:"target_url"`
 	Weight    uint   `json:"weight"`
 	ScanLimit *uint  `json:"scan_limit"`
+	WxRemark  string `json:"wx_remark"`
 }
 
 func NewRoutingService(db *gorm.DB, redis *redis.Client) *RoutingService {
@@ -91,6 +92,7 @@ func (s *RoutingService) CreateStrategy(tx *gorm.DB, linkID uint64, input *Strat
 			TargetURL:  item.TargetURL,
 			Weight:     weight,
 			ScanLimit:  item.ScanLimit,
+			WxRemark:   optionalString(item.WxRemark),
 			Status:     model.StatusActive,
 		})
 	}

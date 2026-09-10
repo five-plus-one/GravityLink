@@ -53,6 +53,7 @@ const form = reactive({
   jwksURL: '',
   scopes: 'openid profile email',
   adminBaseURL: window.location.origin,
+  publicBaseURL: '',
   allowedRoles: 'admin',
   username: '',
   password: '',
@@ -125,6 +126,10 @@ function hydrateFromStatus() {
   form.redisDB = s.redis.db || 0;
   authVerified.value = s.auth.verified;
   ownerName.value = s.auth.owner_username;
+  // 后端 draft 已保存数据库配置时（Logto 回调后页面重载），标记为已测试
+  if (s.database.dsn_configured) {
+    dbTested.value = true;
+  }
 }
 
 function payload(): SetupPayload {
@@ -157,6 +162,7 @@ function payload(): SetupPayload {
       username: form.username.trim(),
       password: form.password,
     },
+    public_base_url: form.publicBaseURL.trim(),
   };
 }
 
@@ -360,7 +366,7 @@ function messageOf(err: unknown): string {
           </NForm>
         </NCard>
 
-        <NAlert type="info" :show-icon="true">建议先点击「测试连接」确认可达，再进入下一步。</NAlert>
+        <NAlert type="info" :show-icon="true">必须先点击「测试连接」确认可达，才能进入下一步。测试通过后连接配置会临时保存，Logto 验证返回后无需重新填写。</NAlert>
       </div>
 
       <!-- 步骤 2：管理员身份 -->
@@ -504,7 +510,15 @@ function messageOf(err: unknown): string {
             <NButton text type="primary" size="small" @click="editAuth">修改</NButton>
           </div>
         </NCard>
-        <NAlert type="success" :show-icon="true">
+        <NCard size="small" class="setup-card" style="margin-top: var(--space-4)">
+          <NForm label-placement="top">
+            <NFormItem label="公开访问地址">
+              <NInput v-model:value="form.publicBaseURL" placeholder="如 https://s.example.com 或 http://localhost:18080" />
+            </NFormItem>
+          </NForm>
+          <p class="muted" style="font-size: 12px; margin: 0">短链接对外访问的入口地址。用于侧栏「查看访问地址」和设置页「预览公开入口」。留空则不显示这两个入口。</p>
+        </NCard>
+        <NAlert type="success" :show-icon="true" style="margin-top: var(--space-4)">
           完成后会自动创建或升级数据库结构，并锁定初始化接口。业务数据不会因重新配置而被清空。
         </NAlert>
       </div>
@@ -522,8 +536,9 @@ function messageOf(err: unknown): string {
             <NButton :disabled="busy || !databaseReady" :loading="busy" @click="testConnections">
               {{ dbTested ? '重新测试连接' : '测试连接' }}
             </NButton>
-            <NButton type="primary" :disabled="busy || !databaseReady" @click="step = 2">
-              继续<template #icon><ChevronRight :size="16" /></template>
+            <NButton type="primary" :disabled="busy || !databaseReady || !dbTested" @click="step = 2">
+              {{ dbTested ? '继续' : '请先测试连接' }}
+              <template #icon><ChevronRight :size="16" /></template>
             </NButton>
           </template>
           <NButton v-else-if="step === 2" type="primary" :disabled="busy || !authVerified" @click="step = 3">

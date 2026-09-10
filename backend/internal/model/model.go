@@ -105,12 +105,24 @@ type Link struct {
 	AccessRule string `gorm:"type:enum('none','wechat','ios','android','mobile','pc');not null;default:none"`
 	// P2：客服码在线时段 JSON（每周 7 天 x 3 时段，仅 kf 模板使用）
 	OnlineSchedule *string `gorm:"type:json"`
+	// 旧版兼容：迁移时保留的旧系统数字 ID（cid/qid/sid 等），用于旧 URL 格式查找
+	LegacyID       *uint64 `gorm:"index:idx_legacy_id"`
 	Status         string  `gorm:"type:enum('active','disabled','expired');not null;default:active"`
 	CreatedBy       uint64         `gorm:"not null;index:idx_created_by"`
 	CreatedAt       time.Time      `gorm:"not null"`
 	UpdatedAt       time.Time      `gorm:"not null"`
 	DeletedAt       gorm.DeletedAt `gorm:"index"`
 }
+
+// LinkCodeAlias 旧短码别名：换码后旧码仍可访问，自动跳转到新码。
+type LinkCodeAlias struct {
+	ID        uint64    `gorm:"primaryKey;autoIncrement"`
+	OldCode   string    `gorm:"size:32;not null;uniqueIndex:uk_old_code"`
+	LinkID    uint64    `gorm:"not null;index:idx_alias_link"`
+	CreatedAt time.Time `gorm:"not null"`
+}
+
+func (LinkCodeAlias) TableName() string { return "link_code_aliases" }
 
 type ChannelConfig struct {
 	ID          uint64    `gorm:"primaryKey;autoIncrement"`

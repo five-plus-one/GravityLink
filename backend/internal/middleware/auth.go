@@ -3,8 +3,11 @@ package middleware
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -86,7 +89,11 @@ func AuthRequired(cfg config.Config, logger *slog.Logger, databases ...*gorm.DB)
 			return
 		}
 		if dbUser.Status != model.StatusActive {
-			response.Error(c, http.StatusForbidden, 4403, "account pending approval")
+			msg := "账号待审核，请联系超级管理员授权"
+			if dbUser.Status == model.StatusDisabled {
+				msg = "账号已被停用"
+			}
+			response.Error(c, http.StatusForbidden, 4403, msg)
 			c.Abort()
 			return
 		}
@@ -167,8 +174,13 @@ type jwkKey struct {
 	KeyType   string `json:"kty"`
 	Algorithm string `json:"alg"`
 	Use       string `json:"use"`
-	Modulus   string `json:"n"`
-	Exponent  string `json:"e"`
+	// RSA
+	Modulus  string `json:"n"`
+	Exponent string `json:"e"`
+	// EC
+	Curve string `json:"crv"`
+	X     string `json:"x"`
+	Y     string `json:"y"`
 }
 
 func (v JWTVerifier) Verify(ctx context.Context, token string) (AuthUser, error) {
@@ -181,7 +193,12 @@ func (v JWTVerifier) Verify(ctx context.Context, token string) (AuthUser, error)
 	if err := decodeJWTPart(parts[0], &header); err != nil {
 		return AuthUser{}, err
 	}
-	if header.Algorithm != "RS256" || header.KeyID == "" {
+	if header.KeyID == "" {
+		return AuthUser{}, errTokenInvalid
+	}
+	switch header.Algorithm {
+	case "RS256", "ES384":
+	default:
 		return AuthUser{}, errTokenInvalid
 	}
 
@@ -193,7 +210,7 @@ func (v JWTVerifier) Verify(ctx context.Context, token string) (AuthUser, error)
 		return AuthUser{}, err
 	}
 
-	key, err := v.fetchKey(ctx, header.KeyID)
+	key, err := v.fetchKey(ctx, header.KeyID, header.Algorithm)
 	if err != nil {
 		return AuthUser{}, err
 	}
@@ -203,12 +220,36 @@ func (v JWTVerifier) Verify(ctx context.Context, token string) (AuthUser, error)
 	if err != nil {
 		return AuthUser{}, err
 	}
-	digest := sha256.Sum256(signed)
-	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature); err != nil {
+
+	switch pub := key.(type) {
+	case *rsa.PublicKey:
+		digest := sha256.Sum256(signed)
+		if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], signature); err != nil {
+			return AuthUser{}, errTokenInvalid
+		}
+	case *ecdsa.PublicKey:
+		if err := verifyES384(pub, signed, signature); err != nil {
+			return AuthUser{}, errTokenInvalid
+		}
+	default:
 		return AuthUser{}, errTokenInvalid
 	}
 
 	return userFromPayload(payload), nil
+}
+
+// verifyES384 验证 ES384 签名。JWT 的 ECDSA 签名是 R||S 拼接（P-384 各 48 字节）。
+func verifyES384(pub *ecdsa.PublicKey, data, sig []byte) error {
+	if len(sig) != 96 {
+		return errTokenInvalid
+	}
+	r := new(big.Int).SetBytes(sig[:48])
+	s := new(big.Int).SetBytes(sig[48:])
+	digest := sha512.Sum384(data)
+	if !ecdsa.Verify(pub, digest[:], r, s) {
+		return errTokenInvalid
+	}
+	return nil
 }
 
 func (v JWTVerifier) validatePayload(payload jwtPayload) error {
@@ -224,7 +265,7 @@ func (v JWTVerifier) validatePayload(payload jwtPayload) error {
 	return nil
 }
 
-func (v JWTVerifier) fetchKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+func (v JWTVerifier) fetchKey(ctx context.Context, kid, alg string) (crypto.PublicKey, error) {
 	jwksURL := v.config.LogtoJWKSURL
 	if jwksURL == "" && v.config.LogtoIssuer != "" {
 		jwksURL = strings.TrimRight(v.config.LogtoIssuer, "/") + "/oidc/jwks"
@@ -251,8 +292,14 @@ func (v JWTVerifier) fetchKey(ctx context.Context, kid string) (*rsa.PublicKey, 
 		return nil, err
 	}
 	for _, key := range jwks.Keys {
-		if key.KeyID == kid && key.KeyType == "RSA" {
+		if key.KeyID != kid {
+			continue
+		}
+		if alg == "RS256" && key.KeyType == "RSA" {
 			return rsaPublicKey(key)
+		}
+		if alg == "ES384" && key.KeyType == "EC" {
+			return ecPublicKey(key)
 		}
 	}
 	return nil, errTokenInvalid
@@ -275,6 +322,34 @@ func rsaPublicKey(key jwkKey) (*rsa.PublicKey, error) {
 	}
 
 	return &rsa.PublicKey{N: n, E: int(e)}, nil
+}
+
+func ecPublicKey(key jwkKey) (*ecdsa.PublicKey, error) {
+	var curve elliptic.Curve
+	switch key.Curve {
+	case "P-256":
+		curve = elliptic.P256()
+	case "P-384":
+		curve = elliptic.P384()
+	case "P-521":
+		curve = elliptic.P521()
+	default:
+		return nil, errTokenInvalid
+	}
+	xBytes, err := base64.RawURLEncoding.DecodeString(key.X)
+	if err != nil {
+		return nil, err
+	}
+	yBytes, err := base64.RawURLEncoding.DecodeString(key.Y)
+	if err != nil {
+		return nil, err
+	}
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+	if !curve.IsOnCurve(x, y) {
+		return nil, errTokenInvalid
+	}
+	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
 }
 
 func bearerToken(header string) string {

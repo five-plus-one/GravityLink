@@ -65,15 +65,60 @@ GravityLink 在落地域名上托管落地页，页面内容由预设模板 + �
 
 **安全约束**：自定义 HTML 经过 sanitize 过滤，禁止 `<script>`、`on*` 事件属性、`javascript:` 协议。
 
+### 4. kf（客服码展示页）
+
+用途：客服活码展示页，在线状态徽章 + 客服二维码 + 微信号一键复制。
+
+内容字段：
+
+```json
+{
+  "headline": "添加专属客服",
+  "subtext": "长按识别二维码，添加客服微信",
+  "footer_text": "工作时间内回复更快",
+  "theme_color": "#16a34a",
+  "safety_tip": "谨防冒充客服的诈骗行为"
+}
+```
+
+渲染时注入：
+- **在线状态徽章**：根据链接 `online_schedule` JSON（每周 7 天 × 时段）判断当前是否在线；未配置时段视为全天在线
+- **二维码图片**：由活码轮换策略选中目标后注入
+- **微信号**：来自选中目标的 `wx_remark` 字段，展示页提供一键复制按钮
+
+### 5. kami（卡密提取页）
+
+用途：访客打开后点击按钮领取卡密，支持提取口令。
+
+内容字段：
+
+```json
+{
+  "announcement": "点击下方按钮领取卡密",
+  "button_text": "立即领取",
+  "theme_color": "#0f766e",
+  "project_id": 1
+}
+```
+
+`project_id` 绑定卡密项目。访客点击按钮后前端 POST `/api/v1/kami/{project_id}/issue`，服务端原子发码（FIFO + FOR UPDATE SKIP LOCKED）。口令、频率限制、重复提取策略由项目配置控制。
+
+**注意**：kami 模板的活码链接无需配置二维码目标（创建时跳过 strategy 校验）。
+
 ## 模板渲染方式
 
-Go 侧使用 `html/template` 渲染，模板文件存于 `backend/internal/templates/`：
+Go 侧使用 `html/template` 渲染，模板文件存于 `backend/internal/web/templates/`：
 
 ```
 templates/
 ├── liveqr.html
+├── kf.html
 ├── redirect_notice.html
-└── base.html        # 公共 head（引入 CSS、meta）
+├── kami.html
+├── custom.html
+├── transit.html
+├── unavailable.html
+└── public.html
 ```
 
 落地页渲染时：
@@ -96,4 +141,3 @@ templates/
 ### 2026-09-06 访问状态校验
 
 直接访问落地域名必须与入口短链保持一致：已停用返回 404，已过期返回 410；校验在模板加载和目标计数之前执行，拒绝访问不增加扫码计数。
-

@@ -1,3 +1,7 @@
+# GravityLink 服务器部署配置
+# 用法：docker-compose -f docker-compose.server.yml up -d
+# 直接拉取 Docker Hub 镜像，无需本地构建
+
 name: gravitylink
 
 services:
@@ -36,9 +40,7 @@ services:
       retries: 10
 
   gravitylink:
-    build:
-      context: ..
-      dockerfile: backend/Dockerfile
+    image: 5plus1/gravitylink:latest
     restart: unless-stopped
     environment:
       APP_ENV: production
@@ -54,7 +56,6 @@ services:
       - "${ADMIN_PORT:-8081}:8081"
     volumes:
       - gravitylink_data:/data
-      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
     depends_on:
       mysql:
         condition: service_healthy

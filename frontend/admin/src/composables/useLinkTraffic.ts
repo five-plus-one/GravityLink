@@ -1,5 +1,9 @@
 import { onScopeDispose, ref } from 'vue';
-import { getDailyStats, getHourlyStats, getSummaryStats, type DailyPoint, type HourlyPoint, type SummaryStats } from '../api';
+import {
+  getDailyStats, getHourlyStats, getSummaryStats,
+  getOverviewDaily, getOverviewHourly, getOverviewSummary,
+  type DailyPoint, type HourlyPoint, type SummaryStats,
+} from '../api';
 
 export function useLinkTraffic() {
   const summary = ref<SummaryStats | null>(null);
@@ -10,6 +14,7 @@ export function useLinkTraffic() {
   let requestID = 0;
   onScopeDispose(() => { requestID++; });
 
+  // id=0 表示全部链接聚合；null 表示未选择
   async function load(id: number | null) {
     const current = ++requestID;
     summary.value = null;
@@ -19,9 +24,9 @@ export function useLinkTraffic() {
     loading.value = id !== null;
     if (id === null) return;
     try {
-      const [nextSummary, nextDaily, nextHourly] = await Promise.all([
-        getSummaryStats(id), getDailyStats(id), getHourlyStats(id),
-      ]);
+      const [nextSummary, nextDaily, nextHourly] = id === 0
+        ? await Promise.all([getOverviewSummary(), getOverviewDaily(), getOverviewHourly()])
+        : await Promise.all([getSummaryStats(id), getDailyStats(id), getHourlyStats(id)]);
       if (current !== requestID) return;
       summary.value = nextSummary;
       daily.value = nextDaily ?? [];
