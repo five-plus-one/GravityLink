@@ -112,16 +112,7 @@ function handleMenuSelect(key: string) {
       show-trigger
       class="admin-sider"
     >
-      <div class="sider-brand">
-        <span class="brand-mark">G</span>
-        <Transition name="fade">
-          <div v-if="!collapsed" class="brand-text">
-            <strong>GravityLink</strong>
-            <small>Admin</small>
-          </div>
-        </Transition>
-      </div>
-
+      <!-- 品牌标识只在页脚呈现（Docs/ui-design-system.md 2026-09-11），侧栏不渲染 Logo -->
       <NMenu
         :value="activeKey"
         :options="menuOptions"
@@ -210,26 +201,6 @@ function handleMenuSelect(key: string) {
   flex-direction: column;
   overflow-y: auto;
   min-height: 0;
-}
-
-.sider-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-4);
-  color: var(--color-text-primary);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.brand-text strong,
-.brand-text small {
-  display: block;
-}
-
-.brand-text small {
-  margin-top: 2px;
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-sm);
 }
 
 .sider-menu {
@@ -405,6 +376,9 @@ function handleMenuSelect(key: string) {
   }
   .main-header {
     padding: 0 var(--space-4);
+  }
+  .page-heading {
+    margin-bottom: var(--space-4);
   }
   .page-heading h1 {
     font-size: var(--font-size-xl);

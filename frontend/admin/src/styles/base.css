@@ -147,6 +147,38 @@ code,
   --n-primary-color-pressed: var(--color-primary-pressed);
 }
 
+/* 统一自绘滚动条（Docs/ui-design-system.md 2026-09-11）
+   WebKit 走 ::-webkit-scrollbar，Firefox 走 scrollbar-width/color。
+   Naive UI 的 NScrollBar 容器已用类选择器隐藏原生滚动条，不受此规则影响。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b6c6da transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: #c2d0e2;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a6b9d2;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* P2/P3 移动端全局适配：触控目标放大 + 字号调整 + 排班格/图例适配 */
 @media (max-width: 640px) {
   /* P2：提高按钮触控目标面积（Naive UI tiny/small 按钮在移动端增大 padding） */
@@ -169,13 +201,14 @@ code,
   body {
     font-size: 15px;
   }
+  /* 移动端卡片内边距收紧，给表格与筛选控件让出宽度 */
+  body .n-card {
+    --n-padding-left: 16px;
+    --n-padding-right: 16px;
+  }
   /* P2：排班选择器嵌弹窗内时降为单列 */
   .week-grid,
   .schedule-grid {
     grid-template-columns: 1fr !important;
-  }
-  /* P3：ECharts 饼图图例窄屏不换行 */
-  .echarts-legend-compact {
-    orient: 'horizontal' !important;
   }
 }

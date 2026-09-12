@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed,ref,watch } from 'vue';
-import { NButton,NModal,NInput,NInputNumber,NSelect,NDatePicker,NFormItem,NAlert,NPopconfirm,useMessage } from 'naive-ui';
+import { NButton,NIcon,NModal,NInput,NInputNumber,NSelect,NDatePicker,NFormItem,NAlert,NPopconfirm,useMessage } from 'naive-ui';
+import { Settings2 } from '@lucide/vue';
 import { request } from '../api';
 import MaterialPicker from './MaterialPicker.vue';
 import BatchAdd from './BatchAdd.vue';
@@ -30,7 +31,7 @@ async function save(){if(!editing.value||busy.value)return;busy.value=true;try{a
 async function saveMode(){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/strategy`,{method:'PUT',body:JSON.stringify({mode:mode.value})});message.success('展示模式已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
 </script>
 <template>
- <NButton text size="small" @click="open">二维码配置</NButton>
+ <NButton text size="small" title="二维码配置" @click="open"><template #icon><NIcon :size="15"><Settings2 /></NIcon></template></NButton>
  <NModal v-model:show="show" preset="card" title="活码二维码配置" style="width:min(1080px,96vw)" :mask-closable="false" :closable="!busy" :close-on-esc="!busy">
   <div class="toolbar">
    <NSelect v-model:value="mode" :disabled="busy" :options="[{label:'顺序分发（先用满再换）',value:'round_robin'},{label:'加权随机',value:'weighted'}]" style="width:210px"/><NButton :disabled="busy" @click="saveMode">保存模式</NButton>

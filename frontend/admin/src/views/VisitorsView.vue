@@ -13,6 +13,7 @@ import {
   NTag,
   useMessage,
   type DataTableColumns,
+  type PaginationInfo,
 } from 'naive-ui';
 import { listLinks, listVisitors, type LinkItem, type VisitorLogItem } from '../api';
 
@@ -33,7 +34,8 @@ const filters = reactive({
 const activePreset = ref<string>('');
 
 const page = ref(1);
-const pageSize = 50;
+// 服务端分页：pageSize 需要跟随选择器变化，因此用 ref
+const pageSize = ref(50);
 
 const linkOptions = ref<{ label: string; value: number }[]>([]);
 
@@ -150,8 +152,8 @@ async function refresh() {
   loading.value = true;
   try {
     const params: Parameters<typeof listVisitors>[0] = {
-      limit: pageSize,
-      offset: (page.value - 1) * pageSize,
+      limit: pageSize.value,
+      offset: (page.value - 1) * pageSize.value,
     };
     if (filters.linkId && filters.linkId > 0) params.link_id = filters.linkId;
     if (filters.dateRange) {
@@ -172,6 +174,17 @@ async function refresh() {
 function handlePageChange(p: number) {
   page.value = p;
   refresh();
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size;
+  page.value = 1;
+  refresh();
+}
+
+// 分页条左侧展示总条数（替代表格下方的独立说明文字）
+function renderPaginationPrefix(info: PaginationInfo) {
+  return h('span', { class: 'muted', style: 'font-size:12px' }, `共 ${info.itemCount ?? 0} 条记录`);
 }
 
 function handleSearch() {
@@ -200,25 +213,25 @@ function handleSearch() {
       <div class="filter-bar">
         <NSelect
           v-model:value="filters.linkId"
+          class="f-link"
           :options="linkOptions"
           placeholder="全部链接"
           clearable
           filterable
-          style="width: 240px"
           @update:value="handleSearch"
         />
         <NDatePicker
           v-model:value="filters.dateRange"
+          class="f-date"
           type="daterange"
           clearable
-          style="width: 280px"
           @update:value="handleSearch"
         />
         <NInput
           v-model:value="filters.keyword"
+          class="f-kw"
           placeholder="搜索 IP、短码或名称"
           clearable
-          style="width: 220px"
           @keyup.enter="handleSearch"
         >
           <template #prefix><Search :size="14" /></template>
@@ -226,27 +239,30 @@ function handleSearch() {
         <NButton type="primary" @click="handleSearch">查询</NButton>
       </div>
 
+      <!-- remote 必须与 itemCount 成对出现，否则 Naive UI 按本地数据算页数，翻页不显示 -->
       <NDataTable
         :columns="columns"
         :data="items"
         :loading="loading"
-        :scroll-x="900"
+        remote
+        :scroll-x="980"
         :bordered="false"
         size="small"
         :pagination="{
           page: page,
           pageSize: pageSize,
           itemCount: total,
-          showSizePicker: false,
+          showSizePicker: true,
+          pageSizes: [20, 50, 100],
+          prefix: renderPaginationPrefix,
           onUpdatePage: handlePageChange,
+          onUpdatePageSize: handlePageSizeChange,
         }"
       >
         <template #empty>
           <NEmpty description="暂无访客记录" />
         </template>
       </NDataTable>
-
-      <p v-if="total" class="muted" style="margin-top: 12px; font-size: 12px">共 {{ total }} 条记录</p>
     </NCard>
   </div>
 </template>
@@ -289,6 +305,26 @@ function handleSearch() {
   margin-bottom: var(--space-4);
   flex-wrap: wrap;
   align-items: center;
+}
+
+.f-link {
+  width: 240px;
+}
+
+.f-date {
+  width: 280px;
+}
+
+.f-kw {
+  width: 220px;
+}
+
+@media (max-width: 640px) {
+  .f-link,
+  .f-date,
+  .f-kw {
+    width: 100%;
+  }
 }
 
 .muted {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { NAlert,NButton,NModal,useMessage } from 'naive-ui';
+import { NAlert,NButton,NIcon,NModal,useMessage } from 'naive-ui';
+import { QrCode } from '@lucide/vue';
 const props=defineProps<{url:string;name?:string}>();
 const show=ref(false),image=ref(''),busy=ref(false),local=ref(false),message=useMessage();
 async function open(){
@@ -14,7 +15,9 @@ async function open(){
 }
 </script>
 <template>
- <NButton size="small" :disabled="!url" :loading="busy" @click="open">入口二维码</NButton>
+ <NButton text size="small" title="入口二维码" :disabled="!url" :loading="busy" @click="open">
+  <template #icon><NIcon :size="15"><QrCode /></NIcon></template>
+ </NButton>
  <NModal v-model:show="show" preset="card" title="入口二维码" style="width:min(420px,94vw)">
   <NAlert v-if="local" type="warning">当前是本机测试地址。手机扫码使用前，请绑定可从手机访问的域名。</NAlert>
   <img :src="image" alt="入口二维码" style="display:block;width:100%;height:auto"/>

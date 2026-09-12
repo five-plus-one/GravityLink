@@ -239,8 +239,8 @@ const columns: DataTableColumns<LinkItem> = [
         ),
       ]),
   },
-  { title: '访问地址', key: 'url', ellipsis: { tooltip: true }, render: (row) => shortUrlOf(row) || '入口域不可用' },
-  { title: '名称', key: 'Title', render: (row) => row.Title || h('span', { class: 'muted' }, '未命名') },
+  { title: '访问地址', key: 'url', width: 220, ellipsis: { tooltip: true }, render: (row) => shortUrlOf(row) || '入口域不可用' },
+  { title: '名称', key: 'Title', width: 180, ellipsis: { tooltip: true }, render: (row) => row.Title || h('span', { class: 'muted' }, '未命名') },
   {
     title: '类型',
     key: 'Type',
@@ -250,6 +250,7 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '目标',
     key: 'TargetURL',
+    width: 220,
     ellipsis: { tooltip: true },
     render: (row) => row.TargetURL || h('span', { class: 'muted' }, '动态路由'),
   },
@@ -277,31 +278,31 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '操作',
     key: 'actions',
-    width: 300,
+    width: 230,
     render: (row) =>
-      h('div', { style: 'display:flex;gap:4px;align-items:center' }, [
+      h('div', { style: 'display:flex;gap:6px;align-items:center' }, [
         h(
           NButton,
           { text: true, size: 'small', title: '分享（链接+二维码+数据）', disabled: !shortUrlOf(row), onClick: () => { drawerLink.value = row; showDrawer.value = true; } },
-          { icon: () => h(NIcon, { size: 14 }, { default: () => h(Send) }) },
+          { icon: () => h(NIcon, { size: 15 }, { default: () => h(Send) }) },
         ),
         h(
           NButton,
           { text: true, size: 'small', title: '查看统计', onClick: () => router.push({ path: '/stats', query: { linkId: String(row.ID) } }) },
-          { icon: () => h(NIcon, { size: 14 }, { default: () => h(BarChart3) }) },
+          { icon: () => h(NIcon, { size: 15 }, { default: () => h(BarChart3) }) },
         ),
         h(EntryQRCode, {url:shortUrlOf(row),name:row.Code}),
         canWrite.value && row.Type === 'liveqr' ? h(TargetManager, { linkId: row.ID, origin: shortUrlOf(row) ? new URL(shortUrlOf(row)).origin : '' }) : null,
         h(
           NButton,
-          { text: true, size: 'small', tag: 'a', disabled: !shortUrlOf(row), href: shortUrlOf(row) || undefined, target: '_blank', rel: 'noopener noreferrer' },
-          { icon: () => h(NIcon, { size: 14 }, { default: () => h(ExternalLink) }) },
+          { text: true, size: 'small', title: '打开访问地址', disabled: !shortUrlOf(row), tag: 'a', href: shortUrlOf(row) || undefined, target: '_blank', rel: 'noopener noreferrer' },
+          { icon: () => h(NIcon, { size: 15 }, { default: () => h(ExternalLink) }) },
         ),
         canWrite.value
           ? h(
               NButton,
-              { text: true, size: 'small', onClick: () => openEdit(row) },
-              { icon: () => h(NIcon, { size: 14 }, { default: () => h(Pencil) }) },
+              { text: true, size: 'small', title: '编辑链接', onClick: () => openEdit(row) },
+              { icon: () => h(NIcon, { size: 15 }, { default: () => h(Pencil) }) },
             )
           : null,
         canWrite.value
@@ -316,8 +317,8 @@ const columns: DataTableColumns<LinkItem> = [
                 trigger: () =>
                   h(
                     NButton,
-                    { text: true, size: 'small', type: 'error' },
-                    { icon: () => h(NIcon, { size: 14 }, { default: () => h(Trash2) }) },
+                    { text: true, size: 'small', title: '删除链接', type: 'error' },
+                    { icon: () => h(NIcon, { size: 15 }, { default: () => h(Trash2) }) },
                   ),
                 default: () => `确认删除链接 ${row.Code}？此操作不可恢复。`,
               },
@@ -524,30 +525,33 @@ function removeTarget(index: number) {
           <strong>链接</strong>
           <p class="muted">{{ items.length }} 条记录，{{ items.filter((i) => i.Status === 'active').length }} 条可访问</p>
         </div>
-        <div class="card-actions">
-          <BatchAdd v-if="canWrite" :domains="domains.items" @saved="refresh"/>
-          <NInput v-model:value="query" placeholder="搜索短码、名称或目标" clearable style="width: 260px">
-            <template #prefix><Search :size="14" /></template>
-          </NInput>
-          <NSelect v-model:value="typeFilter" :options="typeOptions" placeholder="类型" clearable style="width: 130px" />
-          <NSelect v-model:value="statusFilter" :options="statusOptions" placeholder="状态" clearable style="width: 120px" />
-          <NButton :loading="loading" @click="refresh">
-            <template #icon><RefreshCw :size="16" /></template>
-          </NButton>
-          <NButton v-if="canWrite" type="primary" @click="openCreate">
-            <template #icon><Plus :size="16" /></template>
-            创建链接
-          </NButton>
-        </div>
       </div>
     </template>
+
+    <!-- 工具栏独立成行，窄屏自动换行（Docs/ui-design-system.md 2026-09-11） -->
+    <div class="toolbar">
+      <NInput v-model:value="query" class="tb-search" placeholder="搜索短码、名称或目标" clearable>
+        <template #prefix><Search :size="14" /></template>
+      </NInput>
+      <NSelect v-model:value="typeFilter" class="tb-select" :options="typeOptions" placeholder="类型" clearable />
+      <NSelect v-model:value="statusFilter" class="tb-select" :options="statusOptions" placeholder="状态" clearable />
+      <div class="tb-spacer" />
+      <BatchAdd v-if="canWrite" :domains="domains.items" @saved="refresh"/>
+      <NButton :loading="loading" title="刷新列表" @click="refresh">
+        <template #icon><RefreshCw :size="16" /></template>
+      </NButton>
+      <NButton v-if="canWrite" type="primary" @click="openCreate">
+        <template #icon><Plus :size="16" /></template>
+        创建链接
+      </NButton>
+    </div>
 
     <NDataTable
       :columns="columns"
       :data="filtered"
       :loading="loading"
       :pagination="{ pageSize: 20, showSizePicker: true, pageSizes: [10, 20, 50, 100] }"
-      :scroll-x="1100"
+      :scroll-x="1360"
       :bordered="false"
       size="small"
     >
@@ -711,11 +715,24 @@ function removeTarget(index: number) {
   font-size: var(--font-size-md);
 }
 
-.card-actions {
+.toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.tb-search {
+  width: 240px;
+}
+
+.tb-select {
+  width: 120px;
+}
+
+.tb-spacer {
+  flex: 1 1 var(--space-3);
 }
 
 .form-row {
@@ -781,6 +798,12 @@ function removeTarget(index: number) {
 }
 
 @media (max-width: 640px) {
+  .tb-search {
+    width: 100%;
+  }
+  .tb-select {
+    width: calc(50% - var(--space-1));
+  }
   .form-row {
     grid-template-columns: 1fr;
   }
