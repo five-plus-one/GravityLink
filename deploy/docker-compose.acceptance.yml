@@ -1,0 +1,47 @@
+name: gravitylink-acceptance
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+      MYSQL_DATABASE: gravitylink
+      MYSQL_USER: gravitylink
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, 'mysqladmin ping -h 127.0.0.1 -ugravitylink -p$${MYSQL_PASSWORD}']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+  gravitylink:
+    image: gravitylink-gravitylink
+    environment:
+      APP_ENV: production
+      HTTP_ADDR: :8080
+      ADMIN_HTTP_ADDR: :8081
+      CONFIG_FILE: /data/gravitylink.json
+      SETUP_DEFAULT_MYSQL_HOST: mysql
+      SETUP_DEFAULT_REDIS_HOST: redis
+      TZ: Asia/Shanghai
+      GEO_DB_PATH: /app/ip2region.xdb
+    ports:
+      - '127.0.0.1:28080:8080'
+      - '127.0.0.1:28081:8081'
+    volumes:
+      - app_data:/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+volumes:
+  mysql_data:
+  redis_data:
+  app_data:

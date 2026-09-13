@@ -2,6 +2,8 @@
 
 功能完成度请以 [2026-09-07 旧版对照审计](legacy-comparison-2026-09-07.md) 为准。下表“完成”表示规格文档编写状态，不代表每项业务已通过验收。
 
+最近验收：[查询与分发修复报告](acceptance-2026-09-13.md)，[实施方案](repair-plan-2026-09-13.md)。
+
 ## 核心设计文档
 
 | 文档 | 说明 | 状态 |
@@ -59,3 +61,14 @@
 | [acceptance-2026-09-07.md](acceptance-2026-09-07.md) | 2026-09-07 验收记录 |
 | [legacy-comparison-2026-09-07.md](legacy-comparison-2026-09-07.md) | 旧版功能对照与差距清单 |
 | [operations-completion.md](operations-completion.md) | 批量操作、群码维护、启动恢复等补齐说明 |
+
+- [链接管理与统计交互改进](refinement-plan-2026-09-13.md)
+- [图片对象存储](features/object-storage.md)
+
+
+- [链接管理、统计与对象存储验收](refinement-acceptance-2026-09-13.md)
+
+- [列表管理与卡密设置](features/list-management.md)
+- [列表与素材管理验收](management-acceptance-2026-09-13.md)
+
+- [上下文详情与素材删除](features/context-details.md)

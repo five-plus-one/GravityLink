@@ -14,8 +14,8 @@
 [冷层] MySQL stat_* 聚合表（长期保留，查询直接用此层）
 ```
 
-> 读接口策略：非今日数据读 `stat_*` 聚合表；今日数据实时叠加 Redis 计数。
-> StatFlusher 只落盘「非今日」的 key，今日 key 保留在 Redis 提供实时值，两者无缝衔接。
+> 读接口策略：非今日数据读 `stat_*` 聚合表；今日数据从 `access_logs` 读取，与访客明细一致。
+> StatFlusher 只落盘「非今日」的 key，今日 key 保留供次日汇总，查询不重复叠加今日聚合。
 
 ## 数据采集
 
@@ -64,7 +64,7 @@ UA → 设备/OS/浏览器；IP → 国家/省份/城市/ISP（未启用 IP 库�
 ### stat_flush（每分钟）
 
 1. `SCAN` 扫描 `stat:pv:*`、`stat:uv:*`、`stat:hourly:*`、`stat:dev:*`、`stat:geo:*`（避免 KEYS 阻塞）
-2. 只处理「日期 < 今天」的 key（今日 key 保留给读接口叠加实时值）
+2. 只处理「日期 < 今天」的 key（今日 key 保留供次日汇总）
 3. 幂等覆盖写入（`ON DUPLICATE KEY UPDATE` 设为读取值），MySQL 写成功后才 `DEL` Redis key，失败下轮重试
 4. `stat:pv/uv` → `stat_daily`（uv 同时写入 ip_count）；`stat:hourly` → `stat_hourly`；`stat:dev` → `stat_device`；`stat:geo` → `stat_geo`
 
@@ -166,11 +166,24 @@ GET /api/v1/stats/{link_id}/device?start=&end=
 ### 统计页「全部链接」（2026-09-10）
 
 - 统计页链接选择器固定含「全部链接」（`linkId = 0`），默认选中。
-- 全部链接走 `/stats/overview/summary|daily|hourly`；单链接仍走 `/stats/:id/*`。
+- 全部链接走 `/stats/overview/summary|daily|hourly|device|geo`；单链接仍走 `/stats/:id/*`。
 - 空态判定不得用 `!linkId`（0 会被误判为未选择）；汇总数据区对 0 与具体链接一并展示。
-- 设备/操作系统/浏览器/地域分布目前仅单链接有数据；全部链接下这些卡片显示「暂无数据」。
+- 全部链接与单链接均展示设备、操作系统、浏览器与地域分布；分布按所选日期读取历史聚合并叠加今日明细。
 
 ### 2026-09-06 历史聚合回归修复
 
 GORM 聚合模型必须显式映射现有 stat_daily、stat_hourly、stat_device、stat_geo 表，禁止依赖默认复数命名。本修复不改数据库 schema；验收必须让真实定时 Worker 将昨日测试计数从 Redis 写入既有 MySQL 表，再通过统计 API 校验。
 
+
+## 访客查询与时间范围（2026-09-13）
+
+- `/stats/visitors` 联合 `access_logs` 与 `access_logs_archive`，支持链接、关键词、开始/结束、limit/offset。按访问时间和记录编号倒序稳定分页，空结果返回空数组。
+- 完整时间采用 RFC3339，服务端转换为本地时区；范围为开始包含、结束不包含。仅日期的旧调用兼容整天查询，结束日期包含整天。
+- 默认展示全部保留记录；快捷范围含今天、最近24小时、近7天、近30天。查询应用后翻页保持该筛选快照。
+- 统计的日/小时/设备/地域图响应日期范围；跨度超过90天及无效范围返回明确错误。今日小时图在选择范围后改为该范围内按小时汇总。
+- 归档使用显式列集合，兼容缺少 source_app 的旧归档表；这类旧归档记录的来源应用为空，已有来源地址仍可查看。
+- 今日明细等待异步消费者写入后可见，通常为数秒；历史聚合仍按原有定时任务落盘。旧资料缺失的设备、来源或地域信息不推算补造。
+
+## 精确时段与最近24小时
+
+GET /api/v1/stats/window 接收带时区的 start/end 和可选 link_id，按左闭右开区间查询近期及归档访问明细，返回 PV、去重 IP 的 UV、每日趋势及设备、浏览器、地域分布。范围最多90天。小时接口不传日期时返回截至请求时刻的连续24个一小时时段，每点包含 start/end；传日期时保持历史兼容。
