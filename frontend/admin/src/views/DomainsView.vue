@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ViewportTable from '../components/ViewportTable.vue';
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { Plus, RefreshCw, Trash2 } from '@lucide/vue';
 import {
@@ -218,7 +219,7 @@ function messageOf(err: unknown): string {
       <NSelect v-model:value="selectedType" clearable :options="typeOptions" placeholder="全部用途" aria-label="筛选域名用途" />
       <span class="muted" aria-live="polite">共 {{ filteredItems.length }} 个域名</span>
     </div>
-    <NDataTable :columns="columns" :data="filteredItems" :loading="loading" :pagination="{ pageSize: 20 }" :row-key="(row: DomainItem) => row.ID" :scroll-x="640" :bordered="false" size="small">
+    <ViewportTable :columns="columns" :data="filteredItems" :loading="loading" :pagination="{ pageSize: 20 }" :row-key="(row: DomainItem) => row.ID" :scroll-x="640" :bordered="false" size="small">
       <template #empty>
         <NEmpty :description="items.length ? '没有符合条件的域名' : '尚未配置域名'">
           <template #extra>
@@ -227,7 +228,7 @@ function messageOf(err: unknown): string {
           </template>
         </NEmpty>
       </template>
-    </NDataTable>
+    </ViewportTable>
   </NCard>
 
   <NModal v-model:show="showModal" preset="card" title="添加域名" style="width: min(600px, calc(100vw - 32px))" :mask-closable="false" :closable="!saving" :close-on-esc="!saving">

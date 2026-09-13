@@ -19,9 +19,9 @@ export function showStartupRecovery(): void {
   const panel = document.createElement('main');
   panel.className = 'startup-recovery';
   panel.innerHTML = `
-    <div class="startup-recovery__mark">G</div>
+    <svg class="startup-recovery__mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9 15l6-6M9.5 7.5l2-2a5 5 0 017 7l-2 2M14.5 16.5l-2 2a5 5 0 01-7-7l2-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     <h1>页面资源暂时不可用</h1>
-    <p>服务可能正在启动，或部署后浏览器仍缓存着旧版本。请稍后刷新页面。</p>
+    <p>请刷新页面重试。</p>
   `;
   const button = document.createElement('button');
   button.type = 'button';

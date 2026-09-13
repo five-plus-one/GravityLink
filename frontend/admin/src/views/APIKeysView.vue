@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ViewportTable from '../components/ViewportTable.vue';
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { Key, Plus, RefreshCw, ShieldCheck, Trash2 } from '@lucide/vue';
 import {
@@ -170,11 +171,11 @@ function maskToken(t: string) { return t.length > 12 ? t.slice(0, 10) + '...' + 
         </div>
       </div>
     </template>
-    <NDataTable :columns="columns" :data="keys" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="900" :bordered="false" size="small">
+    <ViewportTable :columns="columns" :data="keys" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="900" :bordered="false" size="small">
       <template #empty>
         <NEmpty description="尚未创建 API Key"><template v-if="canWrite" #extra><NButton type="primary" size="small" @click="openCreate">创建第一个 Key</NButton></template></NEmpty>
       </template>
-    </NDataTable>
+    </ViewportTable>
     </NCard>
 
     <NModal v-model:show="showModal" preset="card" title="创建 API Key" style="width:min(560px,94vw)" :mask-closable="false">

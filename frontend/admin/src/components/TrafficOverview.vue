@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {hourLabel} from "../timeRange";
 import { computed, ref, watch } from 'vue';
 import { Activity, Eye, Users, History, RefreshCw } from '@lucide/vue';
 import { NButton, NCard, NEmpty, NSelect, NSkeleton, NStatistic } from 'naive-ui';
@@ -44,7 +45,7 @@ const dailyOption = computed(() => chart(windowPoints.value.map((p) => p.date.sl
   { name: '访问次数 PV', values: windowPoints.value.map((p) => p.pv), color: primary },
   { name: '访客 UV', values: windowPoints.value.map((p) => p.uv), color: secondary },
 ]));
-const hourlyOption = computed(() => chart(hourly.value.map((p) => `${String(p.hour).padStart(2, '0')}:00`), [
+const hourlyOption = computed(() => chart(hourly.value.map((p) => hourLabel(p)), [
   { name: '访问次数 PV', values: hourly.value.map((p) => p.pv), color: primary },
 ]));
 </script>
@@ -77,11 +78,11 @@ const hourlyOption = computed(() => chart(hourly.value.map((p) => `${String(p.ho
             <VChart v-else-if="hasDaily" :option="dailyOption" autoresize class="chart" />
             <NEmpty v-else :description="`近 ${days} 天暂无访问`" class="chart-empty" />
           </NCard>
-          <NCard title="今日小时分布">
-            <template #header-extra><span class="muted">00:00–23:00</span></template>
+          <NCard title="最近24小时">
+            <template #header-extra><span class="muted">每小时访问量</span></template>
             <NSkeleton v-if="loading" height="320px" :sharp="false" />
             <VChart v-else-if="hasHourly" :option="hourlyOption" autoresize class="chart" />
-            <NEmpty v-else description="今日暂无访问" class="chart-empty" />
+            <NEmpty v-else description="最近24小时暂无访问" class="chart-empty" />
           </NCard>
         </div>
       </template>

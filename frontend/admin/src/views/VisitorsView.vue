@@ -1,14 +1,17 @@
 <script setup lang="ts">
+import ViewportTable from '../components/ViewportTable.vue';
 import { h, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { RefreshCw, Search } from '@lucide/vue';
 import {
+  NAlert,
   NButton,
   NCard,
   NDataTable,
   NDatePicker,
   NEmpty,
   NInput,
+  NPagination,
   NSelect,
   NTag,
   useMessage,
@@ -17,11 +20,17 @@ import {
 } from 'naive-ui';
 import { listLinks, listVisitors, type LinkItem, type VisitorLogItem } from '../api';
 
+import ResponsiveDateRange from '../components/ResponsiveDateRange.vue';
+
 const route = useRoute();
 const message = useMessage();
 
 const items = ref<VisitorLogItem[]>([]);
 const total = ref(0);
+const error = ref('');
+let requestId = 0;
+let applied: Parameters<typeof listVisitors>[0] = {};
+const presets = [{key:'today',label:'今天'},{key:'24h',label:'最近24小时'},{key:'7d',label:'近7天'},{key:'30d',label:'近30天'},{key:'all',label:'全部记录'}];
 const loading = ref(false);
 const links = ref<LinkItem[]>([]);
 
@@ -39,6 +48,7 @@ const pageSize = ref(50);
 
 const linkOptions = ref<{ label: string; value: number }[]>([]);
 
+function locationOf(row:VisitorLogItem){const parts=[row.country,row.province,row.city].filter(Boolean);return parts.includes('Reserved')?'内网或保留地址':[...new Set(parts)].join(' ') || '地域未知';}
 const deviceLabel: Record<string, string> = {
   mobile: '手机', tablet: '平板', desktop: '电脑', bot: '爬虫', unknown: '未知',
 };
@@ -69,7 +79,7 @@ const columns: DataTableColumns<VisitorLogItem> = [
     key: 'location',
     width: 140,
     render: (row) => {
-      const loc = [row.country, row.province, row.city].filter(Boolean).join(' ');
+      const loc = locationOf(row);
       return loc || h('span', { style: 'color:#94a3b8' }, '—');
     },
   },
@@ -106,8 +116,8 @@ onMounted(async () => {
   const qLink = route.query.linkId;
   if (qLink) filters.linkId = Number(qLink);
   // 默认显示今天
-  applyPreset('today');
-  await Promise.all([loadLinks(), refresh()]);
+  applyPreset('all');
+  await loadLinks();
 });
 
 function applyPreset(key: string) {
@@ -135,7 +145,7 @@ function applyPreset(key: string) {
       break;
   }
   page.value = 1;
-  refresh();
+  handleSearch();
 }
 
 async function loadLinks() {
@@ -149,25 +159,20 @@ async function loadLinks() {
 }
 
 async function refresh() {
+  const id = ++requestId;
   loading.value = true;
+  error.value = '';
   try {
-    const params: Parameters<typeof listVisitors>[0] = {
-      limit: pageSize.value,
-      offset: (page.value - 1) * pageSize.value,
-    };
-    if (filters.linkId && filters.linkId > 0) params.link_id = filters.linkId;
-    if (filters.dateRange) {
-      params.start = new Date(filters.dateRange[0]).toISOString().slice(0, 10);
-      params.end = new Date(filters.dateRange[1]).toISOString().slice(0, 10);
-    }
-    if (filters.keyword.trim()) params.keyword = filters.keyword.trim();
-    const result = await listVisitors(params);
-    items.value = result.items;
+    const result = await listVisitors({ ...applied, limit: pageSize.value, offset: (page.value - 1) * pageSize.value });
+    if (id !== requestId) return;
+    items.value = result.items ?? [];
     total.value = result.total;
   } catch (err) {
-    message.error(err instanceof Error ? err.message : '加载访客记录失败');
+    if (id !== requestId) return;
+    items.value = []; total.value = 0;
+    error.value = err instanceof Error ? err.message : '加载访客记录失败';
   } finally {
-    loading.value = false;
+    if (id === requestId) loading.value = false;
   }
 }
 
@@ -188,6 +193,13 @@ function renderPaginationPrefix(info: PaginationInfo) {
 }
 
 function handleSearch() {
+  applied = {};
+  if (filters.linkId) applied.link_id = filters.linkId;
+  if (filters.dateRange) {
+    applied.start = new Date(filters.dateRange[0]).toISOString();
+    applied.end = new Date(filters.dateRange[1]).toISOString();
+  }
+  if (filters.keyword.trim()) applied.keyword = filters.keyword.trim();
   page.value = 1;
   refresh();
 }
@@ -203,7 +215,7 @@ function handleSearch() {
             <p class="muted">查看全部或指定链接的详细访问明细</p>
           </div>
           <div class="card-actions">
-            <NButton :loading="loading" @click="refresh">
+            <NButton :loading="loading" @click="activePreset ? applyPreset(activePreset) : refresh()" aria-label="刷新访客记录">
               <template #icon><RefreshCw :size="16" /></template>
             </NButton>
           </div>
@@ -220,13 +232,7 @@ function handleSearch() {
           filterable
           @update:value="handleSearch"
         />
-        <NDatePicker
-          v-model:value="filters.dateRange"
-          class="f-date"
-          type="daterange"
-          clearable
-          @update:value="handleSearch"
-        />
+        <ResponsiveDateRange v-model:value="filters.dateRange" class="f-date" with-time @update:value="activePreset = ''; handleSearch()" />
         <NInput
           v-model:value="filters.keyword"
           class="f-kw"
@@ -236,11 +242,13 @@ function handleSearch() {
         >
           <template #prefix><Search :size="14" /></template>
         </NInput>
-        <NButton type="primary" @click="handleSearch">查询</NButton>
+        <NButton type="primary" :loading="loading" @click="handleSearch">查询</NButton>
       </div>
 
+      <NAlert v-if="error" type="error" style="margin-bottom:16px">{{ error }}<NButton text @click="refresh">重试</NButton></NAlert>
       <!-- remote 必须与 itemCount 成对出现，否则 Naive UI 按本地数据算页数，翻页不显示 -->
-      <NDataTable
+      <ViewportTable class="desktop-visitors"
+        :max-height="600"
         :columns="columns"
         :data="items"
         :loading="loading"
@@ -250,6 +258,7 @@ function handleSearch() {
         size="small"
         :pagination="{
           page: page,
+          pageSlot: 5,
           pageSize: pageSize,
           itemCount: total,
           showSizePicker: true,
@@ -262,7 +271,20 @@ function handleSearch() {
         <template #empty>
           <NEmpty description="暂无访客记录" />
         </template>
-      </NDataTable>
+      </ViewportTable>
+      <div class="mobile-visitors">
+        <div class="visitor-total">{{ loading ? '正在查询…' : `共 ${total} 条记录` }}</div>
+        <NPagination :page="page" :page-size="pageSize" :item-count="total" :page-slot="5" @update:page="handlePageChange" />
+        <NEmpty v-if="!items.length && !loading" description="所选条件暂无访客记录" />
+        <article v-for="item in items" :key="item.id" class="visitor-card">
+          <strong>{{ item.link_title || item.link_code || '链接已移除' }}</strong>
+          <time>{{ new Date(item.visited_at).toLocaleString('zh-CN',{hour12:false}) }}</time>
+          <div><code>{{ item.ip }}</code> · {{ deviceLabel[item.device] || '未知设备' }}</div>
+          <div>{{ locationOf(item) }}</div>
+          <div>{{ [item.os,item.browser].filter(Boolean).join(' / ') || '系统与浏览器未知' }}</div>
+          <div class="visitor-source">{{ item.source_app || item.referer || '直接访问' }}</div>
+        </article>
+      </div>
     </NCard>
   </div>
 </template>
@@ -299,6 +321,7 @@ function handleSearch() {
   gap: var(--space-2);
 }
 
+.preset-bar {display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .filter-bar {
   display: flex;
   gap: var(--space-3);
@@ -312,7 +335,7 @@ function handleSearch() {
 }
 
 .f-date {
-  width: 280px;
+  width: min(100%, 390px);
 }
 
 .f-kw {
@@ -330,4 +353,6 @@ function handleSearch() {
 .muted {
   color: var(--color-text-tertiary, #7a8990);
 }
+.mobile-visitors{display:none}
+@media(max-width:768px){.desktop-visitors{display:none}.mobile-visitors{display:grid;gap:12px}.visitor-card{border:1px solid var(--color-border);border-radius:10px;padding:14px;display:grid;gap:6px;font-size:13px;overflow-wrap:anywhere}.visitor-card time,.visitor-source{color:var(--color-text-tertiary)}.visitor-total{font-size:13px}}
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from 'vue';
+import BrandMark from "../components/BrandMark.vue";
+import { computed, h, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   BarChart3,
@@ -8,6 +9,7 @@ import {
   Key,
   LayoutDashboard,
   LayoutTemplate,
+  Images,
   Link2,
   LogOut,
   Menu,
@@ -25,13 +27,16 @@ const message = useMessage();
 
 // P0 移动端修复：按屏宽初始化折叠态（≤768px 时默认收起），加 breakpoint + transform + scrim
 const isMobileView = ref(window.innerWidth <= 768);
-window.addEventListener('resize', () => { isMobileView.value = window.innerWidth <= 768; });
 const collapsed = ref(isMobileView.value);
+function resizeLayout() { const mobile = window.innerWidth <= 768; if (mobile !== isMobileView.value) collapsed.value = mobile; isMobileView.value = mobile; }
+window.addEventListener('resize', resizeLayout);
+onUnmounted(() => window.removeEventListener('resize', resizeLayout));
 
 const nav = [
   { key: 'dashboard', label: '概览', icon: LayoutDashboard, to: '/', adminOnly: false },
   { key: 'links', label: '链接', icon: Link2, to: '/links', adminOnly: false },
   { key: 'share-cards', label: '微信分享卡片', icon: Link2, to: '/share-cards', adminOnly: false },
+  {key:'materials',label:'素材库',icon:Images,to:'/materials',adminOnly:true},
   { key: 'domains', label: '域名', icon: Globe2, to: '/domains', adminOnly: true },
   { key: 'landing-pages', label: '落地页', icon: LayoutTemplate, to: '/landing-pages', adminOnly: false },
   { key: 'stats', label: '统计', icon: BarChart3, to: '/stats', adminOnly: false },
@@ -106,18 +111,19 @@ function handleMenuSelect(key: string) {
     <NLayoutSider
       v-model:collapsed="collapsed"
       :width="232"
-      :collapsed-width="64"
+      :collapsed-width="isMobileView ? 0 : 64"
       :collapse-mode="isMobileView ? 'transform' : 'width'"
       breakpoint="768"
-      show-trigger
+      :show-trigger="false"
       class="admin-sider"
+      :class="{'mobile-hidden': isMobileView && collapsed, 'is-collapsed': collapsed}"
     >
       <!-- 品牌标识只在页脚呈现（Docs/ui-design-system.md 2026-09-11），侧栏不渲染 Logo -->
       <NMenu
         :value="activeKey"
         :options="menuOptions"
         :collapsed="collapsed"
-        :collapsed-width="64"
+        :collapsed-width="isMobileView ? 0 : 64"
         :collapsed-icon-size="20"
         class="sider-menu"
         @update:value="handleMenuSelect"
@@ -145,19 +151,15 @@ function handleMenuSelect(key: string) {
 
     <NLayout class="admin-main">
       <header class="main-header">
-        <NButton quaternary circle aria-label="折叠侧栏" @click="collapsed = !collapsed">
+        <div class="header-navigation"><NButton quaternary circle aria-label="折叠侧栏" @click="collapsed = !collapsed">
           <template #icon><Menu :size="20" /></template>
-        </NButton>
+        </NButton><span class="header-title">{{ pageTitle }}</span></div>
         <div class="header-user">
           <NText depth="2">{{ auth.user?.username }}</NText>
           <NAvatar round size="small" class="header-avatar">{{ auth.user?.username?.slice(0, 1).toUpperCase() }}</NAvatar>
         </div>
       </header>
       <main class="main-body">
-        <div class="page-heading">
-          <h1>{{ pageTitle }}</h1>
-          <p>{{ pageSubtitle }}</p>
-        </div>
         <RouterView v-slot="{ Component }">
           <div :key="route.path" class="route-content">
             <component :is="Component" />
@@ -165,8 +167,8 @@ function handleMenuSelect(key: string) {
         </RouterView>
       </main>
       <footer class="admin-footer">
-        <a href="https://github.com/five-plus-one/GravityLink" target="_blank" rel="noopener noreferrer" class="footer-link">
-          <span class="brand-mark footer-mark">G</span>
+        <a href="https://r-l.ink/glink" target="_blank" rel="noopener noreferrer" class="footer-link">
+          <BrandMark class="brand-icon footer-mark" />
           <span>GravityLink</span>
         </a>
       </footer>
@@ -186,7 +188,7 @@ function handleMenuSelect(key: string) {
 }
 
 /* 高度穿透到 NLayout 内部滚动容器，保证侧边栏与主区撑满视口 */
-.admin-shell :deep(.n-layout-scroll-container) {
+.admin-shell > :deep(.n-layout-scroll-container) {
   height: 100%;
 }
 
@@ -258,7 +260,7 @@ function handleMenuSelect(key: string) {
 
 .user-avatar {
   background: var(--color-primary);
-  color: #fff;
+  color: #435369;
   font-weight: 600;
 }
 
@@ -281,22 +283,20 @@ function handleMenuSelect(key: string) {
 }
 
 .admin-main {
-  background:
-    radial-gradient(circle at 16% 8%, rgba(77, 159, 255, 0.14), transparent 30%),
-    radial-gradient(circle at 84% 10%, rgba(146, 125, 255, 0.12), transparent 32%),
-    radial-gradient(circle at 70% 88%, rgba(75, 205, 205, 0.09), transparent 34%),
-    var(--color-bg-page);
+  min-width: 0;
+  background: var(--color-bg-page);
 }
 
 /* 让 header + main 的纵向 flex 布局作用在 NLayout 内部滚动容器上 */
-.admin-main :deep(.n-layout-scroll-container) {
+.admin-main > :deep(.n-layout-scroll-container) {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .main-header {
-  height: 64px;
+  height: 48px;
+  flex-shrink: 0;
   padding: 0 var(--space-6);
   display: flex;
   align-items: center;
@@ -306,6 +306,7 @@ function handleMenuSelect(key: string) {
   backdrop-filter: blur(18px);
 }
 
+.header-navigation{display:flex;align-items:center;gap:10px}.header-title{font-weight:600}
 .header-user {
   display: flex;
   align-items: center;
@@ -314,19 +315,22 @@ function handleMenuSelect(key: string) {
 }
 
 .header-avatar {
-  background: linear-gradient(135deg, var(--color-primary), #7067f0);
-  color: #fff;
+  border:1px solid var(--color-border);
+  background: #e9edf2;
+  color: #435369;
   font-weight: 700;
 }
 
 .main-body {
   flex: 1;
   min-height: 0;
-  padding: var(--space-8);
+  padding: 16px;
   overflow-y: auto;
+  min-width: 0;
 }
 
 .main-body > * {
+  min-width: 0;
   max-width: var(--layout-content-max);
   margin: 0 auto;
 }
@@ -388,16 +392,18 @@ function handleMenuSelect(key: string) {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .admin-shell :deep(.n-layout-sider) {
     position: fixed !important;
     z-index: 100;
-    height: 100%;
+    height: 100dvh;
     top: 0;
     left: 0;
     box-shadow: 4px 0 24px rgba(16, 42, 51, 0.16);
   }
 }
+
+.admin-sider.mobile-hidden{visibility:hidden;pointer-events:none}
 
 /* P0 移动端遮罩层 */
 .mobile-scrim {
@@ -410,36 +416,30 @@ function handleMenuSelect(key: string) {
 
 /* GravityLink 页脚 */
 .admin-footer {
-  padding: var(--space-4) var(--space-6);
+  padding: 3px 12px;
   display: flex;
   justify-content: center;
-  border-top: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.6);
   flex-shrink: 0;
 }
 .footer-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   color: var(--color-text-tertiary);
   text-decoration: none;
-  font-size: var(--font-size-sm);
-  transition: color 0.15s;
+  font-size: 10px;
+  line-height: 14px;
 }
-.footer-link:hover {
-  color: var(--color-primary);
-}
+.footer-link:hover { color: var(--color-primary); }
 .footer-mark {
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
-  border-radius: 5px;
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+  border-radius: 3px;
 }
-
-/* 移动端页脚紧凑 */
-@media (max-width: 767px) {
-  .admin-footer {
-    padding: var(--space-3) var(--space-4);
-  }
-}
+.brand-icon { width:32px;height:32px;color:var(--color-primary);flex-shrink:0 }
+.brand-icon.footer-mark{width:12px;height:12px}
+.admin-sider.is-collapsed :deep(.sider-menu){padding:8px 0}
+.admin-sider.is-collapsed .sider-footer{padding:12px 0}
+.admin-sider.is-collapsed .sider-user{padding:0;justify-content:center}
 </style>

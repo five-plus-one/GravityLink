@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ViewportTable from '../components/ViewportTable.vue';
 import { computed, h, onMounted, ref } from 'vue';
 import { RefreshCw, ShieldCheck, UserCheck, Users as UsersIcon } from '@lucide/vue';
 import {
@@ -148,10 +149,7 @@ async function setStatus(item: UserItem, status: 'active' | 'disabled') {
 
 <template>
   <div class="page-view">
-    <NAlert type="info" :show-icon="true">
-      <template #icon><ShieldCheck :size="16" /></template>
-      <strong>后端强制执行权限</strong> · 超级管理员可授权管理员、停用账号；界面选择不会覆盖后端角色。
-    </NAlert>
+
 
     <NCard>
       <template #header>
@@ -167,13 +165,13 @@ async function setStatus(item: UserItem, status: 'active' | 'disabled') {
         </div>
       </template>
 
-      <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="700" :bordered="false" size="small">
+      <ViewportTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="700" :bordered="false" size="small">
         <template #empty>
           <NEmpty description="暂无账号">
             <template #icon><UsersIcon :size="32" /></template>
           </NEmpty>
         </template>
-      </NDataTable>
+      </ViewportTable>
     </NCard>
   </div>
 </template>

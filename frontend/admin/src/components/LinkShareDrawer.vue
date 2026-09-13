@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkStatsDrawer from './LinkStatsDrawer.vue';
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { NAlert, NButton, NDrawer, NDrawerContent, NSkeleton, useMessage } from 'naive-ui';
@@ -11,6 +12,8 @@ import { getSummaryStats, type LinkItem, type SummaryStats } from '../api';
 const props = defineProps<{ show: boolean; link: LinkItem | null; url: string }>();
 const emit = defineEmits<{ (e: 'update:show', v: boolean): void; (e: 'edit', link: LinkItem): void }>();
 
+const statsLink=ref<LinkItem|null>(null),statsOpen=ref(false);
+function openStats(link:LinkItem){statsLink.value=link;statsOpen.value=true}
 const router = useRouter();
 const message = useMessage();
 const qr = ref('');
@@ -63,8 +66,7 @@ async function copy(text: string, tip = '已复制') {
 }
 
 function gotoStats() {
-  emit('update:show', false);
-  router.push({ path: '/stats', query: { linkId: String(props.link?.ID ?? '') } });
+  if(props.link)openStats(props.link);
 }
 </script>
 
@@ -118,6 +120,7 @@ function gotoStats() {
       </template>
     </NDrawerContent>
   </NDrawer>
+<LinkStatsDrawer v-model:show="statsOpen" :link="statsLink" />
 </template>
 
 <style scoped>

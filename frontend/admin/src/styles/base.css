@@ -212,3 +212,16 @@ code,
     grid-template-columns: 1fr !important;
   }
 }
+
+.route-content, .page-view, .stats-page {min-width:0;max-width:100%}
+.n-data-table {min-width:0;max-width:100%}
+.n-data-table .n-data-table-base-table {table-layout:fixed}
+.n-pagination {flex-wrap:wrap;row-gap:8px}
+@media(max-width:768px){
+ .n-card .n-card-header{flex-wrap:wrap;gap:12px}
+ .n-date-panel{max-width:calc(100vw - 24px)}
+ .n-date-panel--datetimerange,.n-date-panel--daterange{overflow-x:auto}
+}
+
+.n-card, .n-card > .n-card__content, .n-card > .n-card-content {min-width:0}
+.page-view,.stats-page{grid-template-columns:minmax(0,1fr)}

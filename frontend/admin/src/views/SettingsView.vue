@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StorageSettings from "../components/StorageSettings.vue";
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { AlertTriangle, ExternalLink, RotateCcw, Save } from '@lucide/vue';
@@ -191,7 +192,7 @@ async function executeReset() {
             <NFormItem label="首页标题" class="span-2"><NInput v-model:value="form.homeTitle" /></NFormItem>
             <NFormItem label="首页说明" class="span-2"><NInput v-model:value="form.homeMessage" type="textarea" :rows="3" /></NFormItem>
             <NFormItem label="首页自动跳转地址（可选）" class="span-2">
-              <NInput v-model:value="form.homeRedirectUrl" placeholder="填写后访问首页直接 302 跳转到此地址；留空则显示首页" />
+              <NInput v-model:value="form.homeRedirectUrl" placeholder="填写后访问首页直接跳转到此地址；留空则显示首页" />
             </NFormItem>
             <NFormItem label="链接不存在标题" class="span-2"><NInput v-model:value="form.notFoundTitle" /></NFormItem>
             <NFormItem label="链接不存在说明" class="span-2"><NInput v-model:value="form.notFoundMessage" type="textarea" :rows="3" /></NFormItem>
@@ -260,7 +261,8 @@ async function executeReset() {
         </div>
       </section>
           </NTabPane>
-        </NTabs>
+        <NTabPane v-if="auth.isSuperAdmin" name="storage" tab="图片存储"><StorageSettings /></NTabPane>
+</NTabs>
       </NCard>
     </template>
 

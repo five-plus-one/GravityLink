@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandMark from "../components/BrandMark.vue";
 import { onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { KeyRound, Link2, LayoutTemplate, LogIn, BarChart3 } from '@lucide/vue';
@@ -54,7 +55,7 @@ async function redirectBack() {
     <!-- 左侧品牌区 -->
     <section class="login-hero">
       <div class="hero-brand">
-        <span class="brand-mark">G</span>
+        <BrandMark class="brand-icon" />
         <strong>GravityLink</strong>
       </div>
       <h1>短链接与活码，一个控制台全部搞定</h1>
@@ -223,4 +224,6 @@ async function redirectBack() {
     min-height: 100vh;
   }
 }
+.brand-icon { width:32px;height:32px;color:var(--color-primary);flex-shrink:0 }
+.brand-icon.footer-mark{width:12px;height:12px}
 </style>

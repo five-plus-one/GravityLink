@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import LinkStatsDrawer from '../components/LinkStatsDrawer.vue';
+import ViewportTable from '../components/ViewportTable.vue';
+import { computed, h, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { BarChart3, Copy, ExternalLink, Pencil, Plus, RefreshCw, Search, Send, Trash2 } from '@lucide/vue';
 import {
   NAlert,
+  NCheckbox,
   NButton,
   NCard,
   NDataTable,
@@ -15,6 +18,7 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NPagination,
   NPopconfirm,
   NRadioButton,
   NRadioGroup,
@@ -27,6 +31,7 @@ import {
   type FormRules,
 } from 'naive-ui';
 import {
+  request,
   createLink,
   deleteLink,
   listLinks,
@@ -43,9 +48,12 @@ import EntryQRCode from '../components/EntryQRCode.vue';
 import BatchAdd from '../components/BatchAdd.vue';
 import ShareSuccessModal from '../components/ShareSuccessModal.vue';
 import LinkShareDrawer from '../components/LinkShareDrawer.vue';
+import LabelManager from '../components/LabelManager.vue';
 import OnlineSchedulePicker from '../components/OnlineSchedulePicker.vue';
 
 const route = useRoute();
+const statsLink=ref<LinkItem|null>(null),statsOpen=ref(false);
+function openStats(link:LinkItem){statsLink.value=link;statsOpen.value=true}
 const router = useRouter();
 const message = useMessage();
 const domains = useDomainStore();
@@ -58,6 +66,25 @@ const loading = ref(false);
 const query = ref('');
 const statusFilter = ref<string | null>(null);
 const typeFilter = ref<string | null>(null);
+const categoryFilter=ref<string|null>(null),tagFilter=ref<string|null>(null),minViews=ref<number|null>(null),sort=ref('new');
+const catalog=ref<{categories:string[];tags:string[]}>({categories:[],tags:[]});
+const categoryOptions=computed(()=>[...new Set([...catalog.value.categories,...items.value.map(i=>i.Category||'').filter(Boolean)])].sort().map(v=>({label:v,value:v})));
+const tagOptions=computed(()=>[...new Set([...catalog.value.tags,...items.value.flatMap(i=>i.Tags||[])])].sort().map(v=>({label:v,value:v})));
+const showLabels=ref(false),advanced=ref(false),checked=ref<number[]>([]),showBulk=ref(false),bulkBusy=ref(false),bulkError=ref('');
+const bulk=reactive({changeCategory:false,category:'',tagMode:'',tags:[] as string[],status:null as string|null});
+async function loadCatalog(){try{catalog.value=await request('/api/v1/link-labels')}catch(e){message.error(messageOf(e))}}
+async function labelsSaved(){await Promise.all([loadCatalog(),refresh()])}
+function openBulk(){Object.assign(bulk,{changeCategory:false,category:'',tagMode:'',tags:[],status:null});bulkError.value='';showBulk.value=true}
+async function applyBulk(){
+ bulkBusy.value=true;bulkError.value='';
+ try{await request('/api/v1/links/bulk',{method:'POST',body:JSON.stringify({ids:checked.value,category:bulk.changeCategory?bulk.category:undefined,tag_mode:bulk.tagMode,tags:bulk.tags,status:bulk.status||undefined})});await labelsSaved();checked.value=[];showBulk.value=false;message.success('所选链接已更新')}
+ catch(e){bulkError.value=messageOf(e)}finally{bulkBusy.value=false}
+}
+watch([query,typeFilter,statusFilter,categoryFilter,tagFilter,minViews,sort],()=>checked.value=[]);
+onMounted(loadCatalog);
+const kindOptions=[{label:'短链接',value:'short'},{label:'渠道链接',value:'channel'},{label:'群活码',value:'liveqr'},{label:'客服码',value:'kf'},{label:'卡密提取',value:'kami'}];
+function kindLabel(item:LinkItem){return kindOptions.find(o=>o.value===(item.Kind||item.Type))?.label||'活码'}
+
 
 const showModal = ref(false);
 const modalMode = ref<'create' | 'edit'>('create');
@@ -74,7 +101,7 @@ const showDrawer = ref(false);
 
 const form = reactive({
   type: 'short' as 'short' | 'channel' | 'liveqr',
-  title: '',
+  title: '', category:'', tags:[] as string[],
   code: '',
   entryDomainId: null as number | null,
   targetUrl: '',
@@ -185,10 +212,13 @@ const filtered = computed(() => {
   const value = query.value.trim().toLowerCase();
   return items.value.filter((item) => {
     if (statusFilter.value && item.Status !== statusFilter.value) return false;
-    if (typeFilter.value && item.Type !== typeFilter.value) return false;
-    if (!value) return true;
+    if (typeFilter.value && (item.Kind||item.Type) !== typeFilter.value) return false;
+    if(categoryFilter.value && (categoryFilter.value==='__none__'?!!item.Category:item.Category!==categoryFilter.value))return false;
+ if(tagFilter.value && !item.Tags?.includes(tagFilter.value))return false;
+ if(minViews.value!==null&&(item.Views||0)<minViews.value)return false;
+ if (!value) return true;
     return `${item.Code} ${item.Title || ''} ${item.TargetURL || ''}`.toLowerCase().includes(value);
-  });
+  }).sort((a,b)=>sort.value==='views-desc'?(b.Views||0)-(a.Views||0):sort.value==='views-asc'?(a.Views||0)-(b.Views||0):b.ID-a.ID);
 });
 
 const landingPageOptions = computed(() =>
@@ -225,34 +255,27 @@ function shortUrlOf(row: LinkItem): string {
 }
 
 const columns: DataTableColumns<LinkItem> = [
-  {
-    title: '短码',
-    key: 'Code',
-    width: 140,
-    render: (row) =>
-      h('div', { style: 'display:flex;align-items:center;gap:6px' }, [
-        h('code', {}, row.Code),
-        h(
-          NButton,
-          { text: true, size: 'tiny', disabled: !shortUrlOf(row), onClick: () => copyShortUrl(row) },
-          { icon: () => h(NIcon, { size: 14 }, { default: () => h(Copy) }) },
-        ),
-      ]),
+  {type:'selection',fixed:'left',width:40,disabled:()=>!canWrite.value},
+  { title: '链接', key: 'Title', width: 300,
+    render: row => h('div', {class:'link-identity'}, [
+      h('strong', {title:row.Title || row.Code}, row.Title || row.Code),
+      h('a', {href:shortUrlOf(row) || undefined,target:'_blank',rel:'noopener noreferrer',title:shortUrlOf(row)}, shortUrlOf(row) || row.Code),
+    ]),
   },
-  { title: '访问地址', key: 'url', width: 220, ellipsis: { tooltip: true }, render: (row) => shortUrlOf(row) || '入口域不可用' },
-  { title: '名称', key: 'Title', width: 180, ellipsis: { tooltip: true }, render: (row) => row.Title || h('span', { class: 'muted' }, '未命名') },
   {
     title: '类型',
     key: 'Type',
     width: 100,
-    render: (row) => typeLabelMap[row.Type] || row.Type,
+    render: (row) => kindLabel(row) || row.Type,
   },
+ {title:'分类 / 标签',key:'labels',width:160,render:row=>h('div',{style:'display:flex;gap:4px;flex-wrap:wrap'},[h('span',row.Category||'未分类'),...(row.Tags||[]).map(t=>h(NTag,{size:'small'},()=>t))])},
+ {title:'访问量',key:'Views',width:85,render:row=>(row.Views||0).toLocaleString()},
   {
     title: '目标',
     key: 'TargetURL',
-    width: 220,
+    width: 240,
     ellipsis: { tooltip: true },
-    render: (row) => row.TargetURL || h('span', { class: 'muted' }, '动态路由'),
+    render: (row) => row.TargetURL || h('span', { class: 'muted' }, row.Kind==='kami'?'卡密领取页':'二维码轮换'),
   },
   {
     title: '创建时间',
@@ -263,7 +286,8 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '状态',
     key: 'Status',
-    width: 90,
+    fixed: 'right',
+    width: 70,
     render: (row) => {
       if (row.Status === 'expired' || !canWrite.value) {
         return h(NTag, { type: statusTypeMap[row.Status] || 'default', size: 'small', round: true }, () => statusLabelMap[row.Status] || row.Status);
@@ -278,7 +302,8 @@ const columns: DataTableColumns<LinkItem> = [
   {
     title: '操作',
     key: 'actions',
-    width: 230,
+    fixed: 'right',
+    width: 220,
     render: (row) =>
       h('div', { style: 'display:flex;gap:6px;align-items:center' }, [
         h(
@@ -288,11 +313,11 @@ const columns: DataTableColumns<LinkItem> = [
         ),
         h(
           NButton,
-          { text: true, size: 'small', title: '查看统计', onClick: () => router.push({ path: '/stats', query: { linkId: String(row.ID) } }) },
+          { text: true, size: 'small', title: '查看统计', onClick: () => openStats(row) },
           { icon: () => h(NIcon, { size: 15 }, { default: () => h(BarChart3) }) },
         ),
         h(EntryQRCode, {url:shortUrlOf(row),name:row.Code}),
-        canWrite.value && row.Type === 'liveqr' ? h(TargetManager, { linkId: row.ID, origin: shortUrlOf(row) ? new URL(shortUrlOf(row)).origin : '' }) : null,
+        h('span', { style:'display:inline-flex;width:20px;justify-content:center' }, canWrite.value && row.Type === 'liveqr' && row.Kind !== 'kami' ? [h(TargetManager, { linkId: row.ID, origin: originOf(row) })] : []),
         h(
           NButton,
           { text: true, size: 'small', title: '打开访问地址', disabled: !shortUrlOf(row), tag: 'a', href: shortUrlOf(row) || undefined, target: '_blank', rel: 'noopener noreferrer' },
@@ -354,7 +379,7 @@ function openCreate() {
   editingId.value = null;
   Object.assign(form, {
     type: 'short',
-    title: '',
+    title: '', category:'', tags:[] as string[],
     code: '',
     entryDomainId: null,
     targetUrl: '',
@@ -370,17 +395,19 @@ function openCreate() {
 }
 
 function openEdit(row: LinkItem) {
+  landingPageId.value=row.LandingPageID||null;
   modalMode.value = 'edit';
   editingId.value = row.ID;
   Object.assign(form, {
     type: row.Type as typeof form.type,
-    title: row.Title || '',
+    title: row.Title || '', category:row.Category||'',tags:[...(row.Tags||[])],
     code: row.Code,
     entryDomainId: row.EntryDomainID,
     targetUrl: row.TargetURL || '',
     strategyMode: 'round_robin',
     targets: [{ label: '', url: '', weight: 1, scanLimit: null, wxRemark: '' }],
-    expireAt: null,
+    expireAt: row.ExpireAt?Date.parse(row.ExpireAt):null,
+    onlineSchedule:row.OnlineSchedule||'',
     status: (row.Status === 'disabled' ? 'disabled' : 'active') as 'active' | 'disabled',
   });
   modalError.value = '';
@@ -406,7 +433,7 @@ async function submit() {
         landing_domain_id: form.type === 'liveqr' ? page?.DomainID : undefined,
         type: form.type,
         code: form.code || undefined,
-        title: form.title || undefined,
+        title: form.title || undefined, category:form.category,tags:form.tags,
         entry_domain_id: form.entryDomainId!,
         target_url: form.type === 'liveqr' ? '' : form.targetUrl,
         access_rule: form.accessRule !== 'none' ? form.accessRule : undefined,
@@ -437,7 +464,7 @@ async function submit() {
       const codeChanged = origRow && form.code.trim() && form.code.trim() !== origRow.Code;
       const domainChanged = origRow && form.entryDomainId && form.entryDomainId !== origRow.EntryDomainID;
       await updateLink(editingId.value, {
-        title: form.title,
+        title: form.title, category:form.category,tags:form.tags,
         target_url: form.type === 'liveqr' ? undefined : form.targetUrl,
         expire_at: form.expireAt ? new Date(form.expireAt).toISOString() : null,
         status: form.status,
@@ -514,6 +541,11 @@ function removeTarget(index: number) {
   if (form.targets.length === 1) return;
   form.targets.splice(index, 1);
 }
+function originOf(link:LinkItem) { const url = shortUrlOf(link); return url ? new URL(url).origin : ''; }
+const mobilePage = ref(1);
+const mobileLinks = computed(() => filtered.value.slice((mobilePage.value-1)*20,mobilePage.value*20));
+watch([query,typeFilter,statusFilter,categoryFilter,tagFilter,minViews,sort], () => { mobilePage.value = 1; });
+
 </script>
 
 <template>
@@ -522,9 +554,10 @@ function removeTarget(index: number) {
     <template #header>
       <div class="card-head">
         <div>
-          <strong>链接</strong>
-          <p class="muted">{{ items.length }} 条记录，{{ items.filter((i) => i.Status === 'active').length }} 条可访问</p>
+          <strong>链接 <span class="muted" style="font-size:12px;font-weight:400">{{filtered.length}} 条</span></strong>
+          
         </div>
+        <div class="toolbar-actions"><NButton v-if="canWrite" size="small" @click="showLabels=true">分类与标签</NButton><BatchAdd v-if="canWrite" :domains="domains.items" @saved="refresh"/><NButton v-if="canWrite" type="primary" size="small" @click="openCreate">创建链接</NButton></div>
       </div>
     </template>
 
@@ -533,25 +566,26 @@ function removeTarget(index: number) {
       <NInput v-model:value="query" class="tb-search" placeholder="搜索短码、名称或目标" clearable>
         <template #prefix><Search :size="14" /></template>
       </NInput>
-      <NSelect v-model:value="typeFilter" class="tb-select" :options="typeOptions" placeholder="类型" clearable />
-      <NSelect v-model:value="statusFilter" class="tb-select" :options="statusOptions" placeholder="状态" clearable />
-      <div class="tb-spacer" />
-      <BatchAdd v-if="canWrite" :domains="domains.items" @saved="refresh"/>
-      <NButton :loading="loading" title="刷新列表" @click="refresh">
-        <template #icon><RefreshCw :size="16" /></template>
-      </NButton>
-      <NButton v-if="canWrite" type="primary" @click="openCreate">
-        <template #icon><Plus :size="16" /></template>
-        创建链接
-      </NButton>
+      <NSelect v-model:value="typeFilter" class="tb-select" :options="kindOptions" placeholder="类型" clearable />
+      <NSelect v-model:value="categoryFilter" class="tb-select" :options="[{label:'未分类',value:'__none__'},...categoryOptions]" placeholder="分类" clearable filterable />
+      <NButton @click="advanced=!advanced">{{advanced?'收起筛选':'更多筛选'}}</NButton>
+      <NButton :loading="loading" title="刷新列表" @click="refresh"><RefreshCw :size="16" /></NButton>
     </div>
+    <div v-if="advanced" class="toolbar">
+      <NSelect v-model:value="statusFilter" class="tb-select" :options="statusOptions" placeholder="状态" clearable />
+      <NSelect v-model:value="tagFilter" class="tb-select" :options="tagOptions" placeholder="标签" clearable filterable />
+      <NInputNumber v-model:value="minViews" :min="0" placeholder="最低访问量" style="width:140px" clearable />
+      <NSelect v-model:value="sort" class="tb-select" :options="[{label:'最新创建',value:'new'},{label:'访问量从高到低',value:'views-desc'},{label:'访问量从低到高',value:'views-asc'}]" />
+      <NButton @click="query='';typeFilter=null;categoryFilter=null;statusFilter=null;tagFilter=null;minViews=null;sort='new'">重置</NButton>
+    </div>
+    <div v-if="checked.length" class="selection-bar"><span>已选 {{checked.length}} 条</span><NButton size="small" @click="checked=filtered.map(i=>i.ID)">选择全部 {{filtered.length}} 条结果</NButton><NButton type="primary" size="small" @click="openBulk">批量设置</NButton><NButton size="small" @click="checked=[]">取消选择</NButton></div>
 
-    <NDataTable
-      :columns="columns"
+    <ViewportTable class="desktop-links"
+      :columns="columns" :row-key="(row:LinkItem)=>row.ID" v-model:checked-row-keys="checked"
       :data="filtered"
       :loading="loading"
       :pagination="{ pageSize: 20, showSizePicker: true, pageSizes: [10, 20, 50, 100] }"
-      :scroll-x="1360"
+      :scroll-x="1485"
       :bordered="false"
       size="small"
     >
@@ -562,8 +596,37 @@ function removeTarget(index: number) {
           </template>
         </NEmpty>
       </template>
-    </NDataTable>
+    </ViewportTable>
+    <div class="mobile-links">
+      <NEmpty v-if="!mobileLinks.length" :description="loading ? '正在加载' : '没有匹配的链接'" />
+      <NPagination v-model:page="mobilePage" :page-size="20" :item-count="filtered.length" :page-slot="3" />
+      <article v-for="link in mobileLinks" :key="link.ID" class="mobile-link">
+        <div class="mobile-link-heading"><NCheckbox v-if="canWrite" :checked="checked.includes(link.ID)" @update:checked="v=>checked=v?[...checked,link.ID]:checked.filter(id=>id!==link.ID)"/><strong>{{ link.Title || link.Code }}</strong><NSwitch v-if="canWrite" size="small" :value="link.Status==='active'" @update:value="v=>toggleStatus(link,v)"/><NTag v-else size="small">{{statusLabelMap[link.Status]}}</NTag></div>
+        <a :href="shortUrlOf(link)" target="_blank" rel="noopener noreferrer">{{ shortUrlOf(link) || link.Code }}</a>
+        <p class="muted">{{ kindLabel(link) || link.Type }} · {{ (link.Views||0).toLocaleString() }} 次访问</p><div class="mobile-labels"><NTag size="small">{{link.Category||'未分类'}}</NTag><NTag v-for="tag in link.Tags" :key="tag" size="small">{{tag}}</NTag></div>
+        <div class="mobile-link-actions">
+          <NButton size="small" :disabled="!shortUrlOf(link)" @click="copyShortUrl(link)">复制</NButton>
+          <NButton size="small" @click="drawerLink=link;showDrawer=true">分享</NButton>
+          <NButton size="small" @click="openStats(link)">统计</NButton>
+          <NButton v-if="canWrite" size="small" @click="openEdit(link)">编辑</NButton>
+          <TargetManager v-if="canWrite && link.Type==='liveqr' && link.Kind !== 'kami'" :link-id="link.ID" :origin="originOf(link)" />
+        </div>
+      </article>
+
+    </div>
   </NCard>
+
+  <LabelManager v-model:show="showLabels" :categories="categoryOptions.map(o=>o.value)" :tags="tagOptions.map(o=>o.value)" @saved="labelsSaved" />
+  <NModal v-model:show="showBulk" preset="card" :title="`批量设置 · ${checked.length} 条链接`" style="width:min(500px,94vw)" :mask-closable="false">
+   <NForm label-placement="top">
+    <NFormItem label="分类"><div style="width:100%"><NCheckbox v-model:checked="bulk.changeCategory">转移分类</NCheckbox><NSelect v-if="bulk.changeCategory" v-model:value="bulk.category" :options="[{label:'未分类',value:''},...categoryOptions]" filterable tag placeholder="选择或输入分类" style="margin-top:8px" /></div></NFormItem>
+    <NFormItem label="标签"><NSelect v-model:value="bulk.tagMode" :options="[{label:'保持现有标签',value:''},{label:'追加标签',value:'append'},{label:'移除标签',value:'remove'},{label:'替换全部标签',value:'replace'}]"/></NFormItem>
+    <NFormItem v-if="bulk.tagMode" label="选择标签"><NSelect v-model:value="bulk.tags" :options="tagOptions" multiple filterable tag placeholder="选择或输入标签"/></NFormItem>
+    <NFormItem label="启用状态"><NSelect v-model:value="bulk.status" :options="statusOptions" clearable placeholder="保持当前状态"/></NFormItem>
+    <NAlert v-if="bulkError" type="error">{{bulkError}}</NAlert>
+   </NForm>
+   <template #footer><NButton type="primary" :disabled="!bulk.changeCategory&&!bulk.tagMode&&!bulk.status" :loading="bulkBusy" @click="applyBulk">保存</NButton></template>
+  </NModal>
 
   <NModal
     v-model:show="showModal"
@@ -579,6 +642,8 @@ function removeTarget(index: number) {
         </NRadioGroup>
       </NFormItem>
 
+      <NFormItem label="分类"><NSelect v-model:value="form.category" :options="categoryOptions" filterable tag clearable placeholder="选择或输入分类" @update:value="v=>form.category=v||''" /></NFormItem>
+      <NFormItem label="标签"><NSelect v-model:value="form.tags" :options="tagOptions" multiple filterable tag placeholder="选择或输入标签" /></NFormItem>
       <NFormItem label="名称">
         <NInput v-model:value="form.title" placeholder="便于管理端识别（可选）" />
       </NFormItem>
@@ -594,8 +659,6 @@ function removeTarget(index: number) {
       <NFormItem v-if="modalMode === 'edit'" label="状态">
         <NSelect v-model:value="form.status" :options="statusOptions" />
       </NFormItem>
-
-      <NAlert v-if="modalMode === 'create'" type="info" style="margin-bottom:16px">入口域名须指向公开服务。localhost 仅供本机测试；自动测试的 .test 域名没有公共 DNS，不能直接用于对外分享。</NAlert>
       <NFormItem v-if="form.type !== 'liveqr'" label="目标 URL" path="targetUrl">
         <NInput v-model:value="form.targetUrl" placeholder="https://example.com/path" />
       </NFormItem>
@@ -687,9 +750,12 @@ function removeTarget(index: number) {
     @edit="((l) => { showDrawer = false; openEdit(l); })($event)"
   />
   </div>
+<LinkStatsDrawer v-model:show="statsOpen" :link="statsLink" />
 </template>
 
 <style scoped>
+.selection-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px;background:#eff6ff;margin-bottom:10px;border-radius:6px}
+
 .page-view {
   display: grid;
   gap: var(--space-4);
@@ -819,4 +885,11 @@ function removeTarget(index: number) {
     grid-row: 1;
   }
 }
+.mobile-links{display:none}
+.mobile-links :deep(.n-pagination){position:sticky;top:0;z-index:2;background:white;padding:8px 0}
+:deep(.link-identity){display:grid;gap:4px;min-width:0}
+:deep(.link-identity strong),:deep(.link-identity a){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+:deep(.link-identity a){font-size:12px;color:var(--color-text-tertiary)}
+@media(max-width:768px){.desktop-links{display:none}.mobile-links{display:grid;gap:14px}.mobile-link{border:1px solid var(--color-border);border-radius:12px;padding:14px;display:grid;gap:10px;min-width:0}.mobile-link>a{overflow-wrap:anywhere;font-size:13px}.mobile-link-heading{display:flex;justify-content:space-between;gap:12px}.mobile-link-heading strong{overflow-wrap:anywhere;min-width:0}.mobile-link-actions{display:flex;gap:8px;flex-wrap:wrap}}
+.toolbar-actions{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}.mobile-labels{display:flex;gap:5px;flex-wrap:wrap}
 </style>

@@ -1,6 +1,7 @@
 import { clearSession, getAccessToken } from './auth';
 
 export interface LinkItem {
+ Category?: string; Tags?: string[]; Kind?: string; Views?: number; LandingPageID?: number; ExpireAt?:string|null; OnlineSchedule?:string|null;
   ID: number;
   EntryDomainID: number;
   PublicURL?: string;
@@ -24,6 +25,7 @@ export interface LinkListData {
 }
 
 export interface CreateLinkPayload {
+ category?: string; tags?: string[];
   type: 'short' | 'channel' | 'liveqr';
   code?: string;
   entry_domain_id: number;
@@ -54,6 +56,7 @@ export interface CreateLinkPayload {
 }
 
 export interface UpdateLinkPayload {
+ category?: string; tags?: string[];
   target_url?: string;
   title?: string;
   expire_at?: string | null;
@@ -119,6 +122,7 @@ export interface DailyPoint {
 }
 
 export interface HourlyPoint {
+ start?: string; end?: string;
   hour: number;
   pv: number;
 }
@@ -236,16 +240,16 @@ export async function getOverviewDaily(query = ''): Promise<DailyPoint[]> {
   return request<DailyPoint[]>(`/api/v1/stats/overview/daily${query}`);
 }
 
-export async function getOverviewHourly(): Promise<HourlyPoint[]> {
-  return request<HourlyPoint[]>('/api/v1/stats/overview/hourly');
+export async function getOverviewHourly(query = ''): Promise<HourlyPoint[]> {
+  return request<HourlyPoint[]>(`/api/v1/stats/overview/hourly${query}`);
 }
 
 export async function getDailyStats(linkId: number, query = ''): Promise<DailyPoint[]> {
   return request<DailyPoint[]>(`/api/v1/stats/${linkId}/daily${query}`);
 }
 
-export async function getHourlyStats(linkId: number): Promise<HourlyPoint[]> {
-  return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly`);
+export async function getHourlyStats(linkId: number, query = ''): Promise<HourlyPoint[]> {
+  return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly${query}`);
 }
 
 export async function getGeoStats(linkId: number, query = ''): Promise<LabelValue[]> {

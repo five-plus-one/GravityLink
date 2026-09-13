@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandMark from "../components/BrandMark.vue";
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Check, ChevronLeft, ChevronRight, Clipboard, Database, KeyRound, ShieldCheck } from '@lucide/vue';
@@ -208,7 +209,7 @@ async function testConnections() {
     const result = await testSetupDatabase(payload());
     dbTested.value = true;
     message.success(
-      result.schema_ready ? 'MySQL 与 Redis 连接正常，现有数据库结构可用' : '连接正常，完成初始化时将自动创建数据库结构',
+      '连接成功，可以继续初始化',
     );
   } catch (err) {
     error.value = messageOf(err);
@@ -286,7 +287,7 @@ function messageOf(err: unknown): string {
   <main class="setup-shell">
     <aside class="setup-aside">
       <div class="setup-brand">
-        <span class="brand-mark">G</span>
+        <BrandMark class="brand-icon" />
         <div>
           <strong>GravityLink</strong>
           <small>系统初始化</small>
@@ -519,7 +520,7 @@ function messageOf(err: unknown): string {
           <p class="muted" style="font-size: 12px; margin: 0">短链接对外访问的入口地址。用于侧栏「查看访问地址」和设置页「预览公开入口」。留空则不显示这两个入口。</p>
         </NCard>
         <NAlert type="success" :show-icon="true" style="margin-top: var(--space-4)">
-          完成后会自动创建或升级数据库结构，并锁定初始化接口。业务数据不会因重新配置而被清空。
+          完成初始化后即可登录管理后台。
         </NAlert>
       </div>
 
@@ -761,4 +762,6 @@ function messageOf(err: unknown): string {
     grid-column: span 1;
   }
 }
+.brand-icon { width:32px;height:32px;color:var(--color-primary);flex-shrink:0 }
+.brand-icon.footer-mark{width:12px;height:12px}
 </style>

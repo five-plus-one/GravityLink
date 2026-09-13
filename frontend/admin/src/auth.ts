@@ -92,7 +92,7 @@ export async function login(config: AuthConfig): Promise<void> {
     client_id: config.client_id,
     redirect_uri: config.redirect_uri,
     response_type: 'code',
-    scope: config.scopes || 'openid profile email',
+    scope: [...new Set(('openid profile email '+(config.scopes||'')).split(/\s+/))].join(' '),
     code_challenge: challenge,
     code_challenge_method: 'S256',
     state,
@@ -163,6 +163,7 @@ async function authRequest<T>(path: string, init: RequestInit = {}, authenticate
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (authenticated && getAccessToken()) headers.set('Authorization', `Bearer ${getAccessToken()}`);
+  if(authenticated && localStorage.getItem(idTokenKey)) headers.set('X-OIDC-ID-Token',localStorage.getItem(idTokenKey)!);
   const response = await fetch(path, { ...init, headers, credentials: 'include' });
   const body = await response.json();
   if (!response.ok || body.code !== 0) throw new Error(body.message || '认证请求失败');

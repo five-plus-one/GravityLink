@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ViewportTable from '../components/ViewportTable.vue';
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { ExternalLink, Pencil, Plus, RefreshCw, Trash2 } from '@lucide/vue';
 import {
@@ -36,6 +37,7 @@ import { useAuthStore } from '../stores/auth';
 import { useDomainStore } from '../stores/domain';
 import MaterialPicker from '../components/MaterialPicker.vue';
 
+const kamiOptions = ref<{label:string;value:number}[]>([]);
 const message = useMessage();
 const auth = useAuthStore();
 const domains = useDomainStore();
@@ -109,7 +111,7 @@ const rules: FormRules = {
   ],
   kamiProjectId: [
     {
-      validator: (_r, _v: number | null) => (form.template !== 'kami' || form.kamiProjectId ? true : new Error('请填写卡密项目 ID')),
+      validator: (_r, _v: number | null) => (form.template !== 'kami' || form.kamiProjectId ? true : new Error('请选择卡密项目')),
       trigger: ['blur', 'change'],
     },
   ],
@@ -174,6 +176,10 @@ const columns: DataTableColumns<LandingPageItem> = [
 
 onMounted(async () => {
   await Promise.all([refresh(), domains.refresh()]);
+  if (auth.isSuperAdmin || auth.user?.role === 'admin') {
+    try { kamiOptions.value = (await request<{items:{id:number;title:string}[]}>('/api/admin/kami/projects')).items.map(p => ({label:p.title,value:p.id})); }
+    catch { message.error('加载卡密项目失败，请刷新重试'); }
+  }
 });
 
 async function refresh() {
@@ -330,7 +336,7 @@ function messageOf(err: unknown): string {
       尚未配置落地域名。请先到「域名」页面添加类型为「落地页」的域名。
     </NAlert>
 
-    <NDataTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="800" :bordered="false" size="small">
+    <ViewportTable :columns="columns" :data="items" :loading="loading" :pagination="{ pageSize: 20 }" :scroll-x="800" :bordered="false" size="small">
       <template #empty>
         <NEmpty description="尚未创建落地页">
           <template v-if="canWrite && landingDomainOptions.length" #extra>
@@ -338,7 +344,7 @@ function messageOf(err: unknown): string {
           </template>
         </NEmpty>
       </template>
-    </NDataTable>
+    </ViewportTable>
   </NCard>
 
   <!-- 手机宽度预览容器 -->
@@ -460,8 +466,8 @@ function messageOf(err: unknown): string {
             <NColorPicker v-model:value="form.color" :show-alpha="false" :modes="['hex']" style="width: 100%" />
           </NFormItem>
         </div>
-        <NFormItem label="卡密项目 ID" path="kamiProjectId">
-          <NInputNumber v-model:value="form.kamiProjectId" :min="1" :precision="0" style="width:100%" placeholder="在「卡密分发」页查看项目 ID" />
+        <NFormItem label="卡密项目" path="kamiProjectId">
+          <NSelect v-model:value="form.kamiProjectId" :options="kamiOptions" filterable placeholder="选择要分发的卡密项目" />
         </NFormItem>
         <NAlert type="info" :show-icon="true">绑定项目后，访客打开此页点击按钮即可原子领取一张未发放卡密；口令与频率限制由项目配置控制。</NAlert>
       </template>

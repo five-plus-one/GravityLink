@@ -5,8 +5,9 @@ import { useRoute } from 'vue-router';
 import '../echarts';
 import VChart from 'vue-echarts';
 import { RefreshCw, RotateCcw } from '@lucide/vue';
-import { NButton, NCard, NDatePicker, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
+import { NAlert, NButton, NCard, NDatePicker, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
 import {
+  request,
   getDailyStats,
   getDeviceStats,
   getGeoStats,
@@ -26,6 +27,9 @@ import {
 } from '../api';
 import { useAuthStore } from '../stores/auth';
 
+import {presetRange,hourLabel} from '../timeRange';
+import ResponsiveDateRange from '../components/ResponsiveDateRange.vue';
+
 const message = useMessage();
 const route = useRoute();
 const auth = useAuthStore();
@@ -33,6 +37,8 @@ const auth = useAuthStore();
 const links = ref<LinkItem[]>([]);
 const selectedLinkId = ref<number>(0); // 0 = 全部链接
 const loading = ref(false);
+const loadError = ref('');
+let loadId = 0;
 const summary = ref<SummaryStats | null>(null);
 const daily = ref<DailyPoint[]>([]);
 const hourly = ref<HourlyPoint[]>([]);
@@ -48,6 +54,7 @@ const deviceLabels: Record<string, string> = {
 };
 
 function labelOf(value: string): string {
+  if (value === 'Reserved') return '内网或保留地址';
   return deviceLabels[value] ?? (value || '未知');
 }
 
@@ -99,7 +106,7 @@ const hourlyOption = computed(() => ({
   tooltip: { trigger: 'axis' },
   xAxis: {
     type: 'category',
-    data: hourly.value.map((p) => `${p.hour}:00`),
+    data: hourly.value.map((p) => hourLabel(p)),
     axisLine: { lineStyle: { color: '#c2cdd2' } },
     axisLabel: { color: '#48565e' },
   },
@@ -188,54 +195,39 @@ watch(selectedLinkId, async () => {
 });
 
 // P1：统计日期范围（趋势图与分布图适用；最长 90 天由后端兜底）
-const dateRange = ref<[number, number] | null>(null);
+const dateRange = ref<[number, number] | null>(presetRange('30d'));
+const periodPV=ref(0),periodUV=ref(0);
 watch(dateRange, () => {
   load();
 });
 
 function rangeQuery(): { start?: string; end?: string } {
   if (!dateRange.value) return {};
-  const fmt = (n: number) => new Date(n).toISOString().slice(0, 10);
+  const fmt = (n: number) => { const d = new Date(n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   return { start: fmt(dateRange.value[0]), end: fmt(dateRange.value[1]) };
 }
 
 async function load() {
   const id = selectedLinkId.value;
+  const current = ++loadId;
   loading.value = true;
+  loadError.value = '';
+  deviceStats.value = null; geo.value = []; daily.value = []; hourly.value = [];
   try {
-    const range = rangeQuery();
-    const rangeParams = new URLSearchParams(Object.entries(range).filter(([, v]) => v)).toString();
-    const suffix = rangeParams ? `?${rangeParams}` : '';
-    if (id === 0) {
-      // 全部链接：用聚合接口
-      const [s, d, h] = await Promise.all([
-        getOverviewSummary(),
-        getOverviewDaily(suffix),
-        getOverviewHourly(),
-      ]);
-      summary.value = s;
-      daily.value = d;
-      hourly.value = h;
-      deviceStats.value = null; // 聚合暂无设备/地域数据
-      geo.value = [];
-    } else {
-      const [s, d, h, dev, g] = await Promise.all([
-        getSummaryStats(id),
-        getDailyStats(id, suffix),
-        getHourlyStats(id),
-        getDeviceStats(id, suffix),
-        getGeoStats(id, suffix),
-      ]);
-      summary.value = s;
-      daily.value = d;
-      hourly.value = h;
-      deviceStats.value = dev;
-      geo.value = g;
-    }
+    const r=dateRange.value||presetRange('30d');
+    const params=new URLSearchParams({link_id:String(id),start:new Date(r[0]).toISOString(),end:new Date(r[1]).toISOString()});
+    const [s,w,h]=await Promise.all([
+      id===0?getOverviewSummary():getSummaryStats(id),
+      request<{pv:number;uv:number;daily:DailyPoint[];device:DeviceStats;geo:LabelValue[]}>(`/api/v1/stats/window?${params}`),
+      id===0?getOverviewHourly():getHourlyStats(id),
+    ]);
+    if(current!==loadId)return;
+    summary.value=s;periodPV.value=w.pv;periodUV.value=w.uv;daily.value=w.daily;deviceStats.value=w.device;geo.value=w.geo;hourly.value=h;
   } catch (err) {
-    message.error(err instanceof Error ? err.message : '加载统计失败');
+    if (current !== loadId) return;
+    loadError.value = err instanceof Error ? err.message : '加载统计失败';
   } finally {
-    loading.value = false;
+    if (current === loadId) loading.value = false;
   }
 }
 
@@ -273,21 +265,13 @@ async function doReset() {
               filterable
               style="width: 280px"
             />
-            <NDatePicker
-              v-model:value="dateRange"
-              type="daterange"
-              clearable
-              :is-date-disabled="(ts: number) => ts > Date.now()"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              style="width: 260px"
-            />
+            <ResponsiveDateRange v-model:value="dateRange" with-time class="stats-range" />
             <NButton :loading="loading" @click="load">
               <template #icon><RefreshCw :size="16" /></template>
             </NButton>
             <NPopconfirm v-if="(auth.isSuperAdmin || auth.user?.role === 'admin') && selectedLinkId > 0" @positive-click="doReset">
               <template #trigger>
-                <NButton type="error" ghost :loading="resetting" title="清空 Redis 计数与聚合表，原始访问日志保留">
+                <NButton type="error" ghost :loading="resetting" title="重置链接的累计统计">
                   <template #icon><RotateCcw :size="16" /></template>
                   重置统计
                 </NButton>
@@ -298,17 +282,18 @@ async function doReset() {
         </div>
       </template>
 
+      <NAlert v-if="loadError" type="error">{{ loadError }}</NAlert>
       <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: var(--space-5)">
         <NGridItem span="4 s:2 m:1">
           <NCard size="small" embedded>
             <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-            <NStatistic v-else label="累计 PV" :value="summary?.total_pv ?? 0" />
+            <NStatistic v-else label="所选时段 PV" :value="periodPV" />
           </NCard>
         </NGridItem>
         <NGridItem span="4 s:2 m:1">
           <NCard size="small" embedded>
             <NSkeleton v-if="loading && !summary" height="60px" :sharp="false" />
-            <NStatistic v-else label="累计 UV" :value="summary?.total_uv ?? 0" />
+            <NStatistic v-else label="所选时段 UV" :value="periodUV" />
           </NCard>
         </NGridItem>
         <NGridItem span="4 s:2 m:1">
@@ -327,12 +312,12 @@ async function doReset() {
 
       <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
         <NGridItem span="2 m:1">
-          <NCard title="每日访问（近 30 天）" size="small" embedded>
+          <NCard :title="'所选时段每日访问'" size="small" embedded>
             <VChart :option="dailyOption" autoresize style="height: 320px" />
           </NCard>
         </NGridItem>
         <NGridItem span="2 m:1">
-          <NCard title="今日 24 小时分布" size="small" embedded>
+          <NCard :title="'最近24小时'" size="small" embedded>
             <VChart :option="hourlyOption" autoresize style="height: 320px" />
           </NCard>
         </NGridItem>
@@ -340,7 +325,7 @@ async function doReset() {
           <NCard title="设备分布" size="small" embedded>
             <NEmpty
               v-if="(deviceStats?.device?.length ?? 0) === 0"
-              description="暂无数据，今日访问将在次日汇总"
+              :description="loading ? '正在加载' : '所选日期暂无访问'"
               style="padding: 60px 0"
             />
             <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
@@ -350,7 +335,7 @@ async function doReset() {
           <NCard title="操作系统" size="small" embedded>
             <NEmpty
               v-if="(deviceStats?.os?.length ?? 0) === 0"
-              description="暂无数据，今日访问将在次日汇总"
+              :description="loading ? '正在加载' : '所选日期暂无访问'"
               style="padding: 60px 0"
             />
             <VChart v-else :option="osOption" autoresize style="height: 320px" />
@@ -360,7 +345,7 @@ async function doReset() {
           <NCard title="浏览器" size="small" embedded>
             <NEmpty
               v-if="(deviceStats?.browser?.length ?? 0) === 0"
-              description="暂无数据，今日访问将在次日汇总"
+              :description="loading ? '正在加载' : '所选日期暂无访问'"
               style="padding: 60px 0"
             />
             <VChart v-else :option="browserOption" autoresize style="height: 320px" />
@@ -402,9 +387,13 @@ async function doReset() {
   font-size: var(--font-size-md);
 }
 
+.stats-range{width:280px}
 .card-actions {
+  flex-wrap: wrap;
+  max-width:100%;
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
+@media(max-width:768px){.card-actions{width:100%}.card-actions :deep(.n-select),.card-actions .stats-range{width:100%!important}}
 </style>

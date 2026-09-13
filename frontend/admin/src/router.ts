@@ -38,6 +38,7 @@ const router = createRouter({
       path: '/',
       component: AdminLayout,
       children: [
+ {path:'materials',name:'materials',component:()=>import('./views/MaterialsView.vue'),meta:{title:'素材库',adminOnly:true}},
         { path: 'share-cards', name: 'share-cards', component: () => import('./views/ShareCardsView.vue'), meta: { title: '微信分享卡片', subtitle: '维护分享内容、封面和公众号配置' } },
         { path: '', name: 'dashboard', component: DashboardView, meta: { title: '数据概览', subtitle: '掌握链接、域名和落地页的运行情况' } },
         { path: 'links', name: 'links', component: LinksView, meta: { title: '链接管理', subtitle: '统一创建与维护短链接、渠道链接和活码' } },

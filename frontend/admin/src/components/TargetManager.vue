@@ -16,22 +16,22 @@ const batchLimit=ref<number|null>(null),batchBusy=ref(false);
 function state(t:Target){if(t.Status!=='active')return '已停用';if(t.ExpireAt&&Date.parse(t.ExpireAt)<=Date.now())return '已到期';if(t.ScanLimit!==null&&t.ScanCount>=t.ScanLimit)return '已满额';return '可分发';}
 const statePill=(t:Target)=>({可分发:'pill green',已满额:'pill amber',已到期:'pill gray',已停用:'pill gray'}[state(t)]||'pill gray');
 const available=computed(()=>items.value.filter(t=>state(t)==='可分发').length);
-async function resetCount(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/${t.ID}/reset-count`,{method:'POST',body:JSON.stringify({expected_count:t.ScanCount,confirmation:'RESET TARGET COUNT'})});await load();message.success('分发计数已重置，访问统计保留；二维码仍为停用状态');}catch(e){message.error(String(e));await refresh();}finally{busy.value=false;}}
+async function resetCount(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/${t.ID}/reset-count`,{method:'POST',body:JSON.stringify({expected_count:t.ScanCount,confirmation:'RESET TARGET COUNT'})});await load();message.success('分发计数已重置，访问统计保留；二维码仍为停用状态');}catch(e){message.error(e instanceof Error?e.message:"操作失败");await refresh();}finally{busy.value=false;}}
 // P1：删除二维码目标（带审计日志）
-async function removeTarget(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/${t.ID}`,{method:'DELETE'});await load();message.success(`已删除「${t.Label||'未命名'}」`);}catch(e){message.error(String(e));}finally{busy.value=false;}}
-async function applyBatchLimit(){if(batchBusy.value)return;batchBusy.value=true;try{const r=await request<{updated:number}>(`/api/admin/links/${props.linkId}/targets/batch-limit`,{method:'PUT',body:JSON.stringify({scan_limit:batchLimit.value})});await load();message.success(`已为 ${r.updated} 个二维码统一设置阈值`);}catch(e){message.error(String(e));}finally{batchBusy.value=false;}}
-async function refresh(){try{await load();}catch(e){message.error(String(e));}}
-async function addMaterials(urls:string[]){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/batch`,{method:'POST',body:JSON.stringify({urls})});await load();message.success(`已添加 ${urls.length} 张二维码，请按需设置阈值和到期时间`);}catch(e){message.error(String(e));}finally{busy.value=false;}}
-async function toggle(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...t,Status:t.Status==='active'?'disabled':'active'})});await load();}catch(e){message.error(String(e));}finally{busy.value=false;}}
+async function removeTarget(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/${t.ID}`,{method:'DELETE'});await load();message.success(`已删除「${t.Label||'未命名'}」`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+async function applyBatchLimit(){if(batchBusy.value)return;batchBusy.value=true;try{const r=await request<{updated:number}>(`/api/admin/links/${props.linkId}/targets/batch-limit`,{method:'PUT',body:JSON.stringify({scan_limit:batchLimit.value})});await load();message.success(`已为 ${r.updated} 个二维码统一设置阈值`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{batchBusy.value=false;}}
+async function refresh(){try{await load();}catch(e){message.error(e instanceof Error?e.message:"操作失败");}}
+async function addMaterials(urls:string[]){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/batch`,{method:'POST',body:JSON.stringify({urls})});await load();message.success(`已添加 ${urls.length} 张二维码，请按需设置阈值和到期时间`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+async function toggle(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...t,Status:t.Status==='active'?'disabled':'active'})});await load();}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
 watch(()=>editing.value?.TargetURL,()=>{imageError.value=false;});
 async function load(){const r=await request<{mode:string;items:Target[]}>(`/api/admin/links/${props.linkId}/targets`);items.value=r.items;mode.value=r.mode;}
-async function open(){try{await load();show.value=true;editing.value=null;}catch(e){message.error(String(e));}}
+async function open(){if(busy.value)return;busy.value=true;try{await load();show.value=true;editing.value=null;}catch(e){message.error(e instanceof Error?e.message:"加载失败");}finally{busy.value=false;}}
 function edit(t?:Target){editing.value=t?{...t,WxRemark:t.WxRemark||''}:{ID:0,Label:'',TargetURL:'',Weight:1,ScanLimit:null,ScanCount:0,Priority:0,Status:'active',ExpireAt:null,Owner:'',WxRemark:''};expiry.value=t?.ExpireAt?Date.parse(t.ExpireAt):null;}
-async function save(){if(!editing.value||busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,WxRemark:editing.value.WxRemark||undefined,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});await load();editing.value=null;message.success('二维码配置已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
-async function saveMode(){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/strategy`,{method:'PUT',body:JSON.stringify({mode:mode.value})});message.success('展示模式已保存');}catch(e){message.error(String(e));}finally{busy.value=false;}}
+async function save(){if(!editing.value||busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,WxRemark:editing.value.WxRemark||undefined,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});await load();editing.value=null;message.success('二维码配置已保存');}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+async function saveMode(){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/strategy`,{method:'PUT',body:JSON.stringify({mode:mode.value})});message.success('展示模式已保存');}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
 </script>
 <template>
- <NButton text size="small" title="二维码配置" @click="open"><template #icon><NIcon :size="15"><Settings2 /></NIcon></template></NButton>
+ <NButton text size="small" title="二维码配置" :loading="busy" @click="open"><template #icon><NIcon :size="15"><Settings2 /></NIcon></template></NButton>
  <NModal v-model:show="show" preset="card" title="活码二维码配置" style="width:min(1080px,96vw)" :mask-closable="false" :closable="!busy" :close-on-esc="!busy">
   <div class="toolbar">
    <NSelect v-model:value="mode" :disabled="busy" :options="[{label:'顺序分发（先用满再换）',value:'round_robin'},{label:'加权随机',value:'weighted'}]" style="width:210px"/><NButton :disabled="busy" @click="saveMode">保存模式</NButton>
@@ -60,7 +60,7 @@ async function saveMode(){if(busy.value)return;busy.value=true;try{await request
      <NButton :disabled="busy" @click="edit(t)">编辑</NButton>
      <NButton :disabled="busy" @click="toggle(t)">{{t.Status==='active'?'停用':'启用'}}</NButton>
      <NPopconfirm @positive-click="resetCount(t)"><template #trigger><NButton :disabled="busy||t.Status!=='disabled'||!t.ScanCount">重置计数</NButton></template>将该二维码分发计数从 {{t.ScanCount}} 归零，历史访问统计保留。确认重置？</NPopconfirm>
-     <NPopconfirm @positive-click="removeTarget(t)"><template #trigger><NButton type="error" ghost :disabled="busy">删除</NButton></template>确认删除「{{t.Label||'未命名'}}」？该二维码立即停止分发且不可恢复（访问日志保留）。删除操作会记入审计日志。</NPopconfirm>
+     <NPopconfirm @positive-click="removeTarget(t)"><template #trigger><NButton type="error" ghost :disabled="busy">删除</NButton></template>确认删除「{{t.Label||'未命名'}}」？该二维码立即停止分发且不可恢复（访问日志保留）。</NPopconfirm>
     </td>
    </tr>
   </tbody></table></div>

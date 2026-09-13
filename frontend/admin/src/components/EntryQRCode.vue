@@ -19,7 +19,7 @@ async function open(){
   <template #icon><NIcon :size="15"><QrCode /></NIcon></template>
  </NButton>
  <NModal v-model:show="show" preset="card" title="入口二维码" style="width:min(420px,94vw)">
-  <NAlert v-if="local" type="warning">当前是本机测试地址。手机扫码使用前，请绑定可从手机访问的域名。</NAlert>
+
   <img :src="image" alt="入口二维码" style="display:block;width:100%;height:auto"/>
   <p style="overflow-wrap:anywhere">{{url}}</p>
   <NButton tag="a" :href="image" :download="`${name||'gravitylink'}-qr.png`" type="primary">下载 PNG</NButton>

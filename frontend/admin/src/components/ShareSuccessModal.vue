@@ -90,9 +90,7 @@ async function copy(text: string, tip = '已复制') {
         </div>
       </div>
 
-      <NAlert v-if="localAddr" type="warning" :show-icon="true">
-        当前是本机测试地址，手机扫码前请绑定可公网访问的入口域名。
-      </NAlert>
+
     </div>
   </NModal>
 </template>

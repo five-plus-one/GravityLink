@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkStatsDrawer from '../components/LinkStatsDrawer.vue';
 import { computed, h, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Activity, ArrowRight, BarChart3, Copy, Globe2, LayoutTemplate, Link2, Plus, QrCode } from '@lucide/vue';
@@ -7,6 +8,8 @@ import { listDomains, listLandingPages, listLinks, type DomainItem, type Landing
 import TrafficOverview from '../components/TrafficOverview.vue';
 import { useAuthStore } from '../stores/auth';
 
+const statsLink=ref<LinkItem|null>(null),statsOpen=ref(false);
+function openStats(link:LinkItem){statsLink.value=link;statsOpen.value=true}
 const router = useRouter();
 const message = useMessage();
 const auth = useAuthStore();
@@ -71,7 +74,7 @@ const columns: DataTableColumns<LinkItem> = [
     title: '目标',
     key: 'TargetURL',
     ellipsis: { tooltip: true },
-    render: (row) => row.TargetURL || h('span', { class: 'muted' }, '动态路由'),
+    render: (row) => row.TargetURL || h('span', { class: 'muted' }, '二维码轮换'),
   },
   {
     title: '状态',
@@ -87,7 +90,7 @@ const columns: DataTableColumns<LinkItem> = [
     render: (row) =>
       h('div', { style: 'display:flex;gap:2px;align-items:center' }, [
         h(NButton, { text: true, size: 'small', title: '复制短链', onClick: () => copyUrl(row) }, { icon: () => h(NIcon, { size: 15 }, { default: () => h(Copy) }) }),
-        h(NButton, { text: true, size: 'small', title: '查看统计', onClick: () => router.push({ path: '/stats', query: { linkId: String(row.ID) } }) }, { icon: () => h(NIcon, { size: 15 }, { default: () => h(BarChart3) }) }),
+        h(NButton, { text: true, size: 'small', title: '查看统计', onClick: () => openStats(row) }, { icon: () => h(NIcon, { size: 15 }, { default: () => h(BarChart3) }) }),
       ]),
   },
 ];
@@ -141,7 +144,7 @@ let started = false;
         <NCard class="metric-card metric-purple" hoverable @click="$router.push('/links')">
           <NStatistic label="活码" :value="loading || linksError ? '—' : liveQrLinks">
             <template #prefix><QrCode :size="20" /></template>
-            <template #suffix><span class="metric-note">动态路由</span></template>
+            <template #suffix><span class="metric-note">二维码轮换</span></template>
           </NStatistic>
         </NCard>
       </NGridItem>
@@ -223,6 +226,7 @@ let started = false;
     </div>
     </div>
   </div>
+<LinkStatsDrawer v-model:show="statsOpen" :link="statsLink" />
 </template>
 
 <style scoped>
