@@ -1,4 +1,4 @@
-FROM node:22-alpine AS admin_builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS admin_builder
 
 WORKDIR /src/frontend/admin
 COPY frontend/admin/package*.json ./
@@ -6,14 +6,16 @@ RUN npm ci
 COPY frontend/admin/ ./
 RUN npm run build
 
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
 COPY --from=admin_builder /src/frontend/admin/dist ./internal/web/admin
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gravitylink ./cmd/server
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /out/gravitylink ./cmd/server
 
 FROM alpine:3.20
 

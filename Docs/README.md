@@ -34,6 +34,7 @@
 
 | 文档 | 说明 |
 |-----|------|
+| [release-workflow.md](release-workflow.md) | 分支管理、容器标签与自动发布 |
 | [../deploy/DEPLOY.md](../deploy/DEPLOY.md) | 服务器部署教程（外部 MySQL/Redis、Nginx 反代、备份） |
 
 预构建镜像：`5plus1/gravitylink:latest`。本地全栈构建与外部库部署 compose 文件见 `deploy/`。

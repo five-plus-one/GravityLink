@@ -1,0 +1,143 @@
+name: Build and Release
+on:
+  push:
+    branches: [main, dev, preview, stable]
+  pull_request:
+    branches: [dev, preview, stable]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate promotion and version
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [[ "$BASE" == stable && "$HEAD" != preview ]]; then echo 'Promote preview into stable'; exit 1; fi
+          if [[ "$BASE" == preview && "$HEAD" != dev ]]; then echo 'Promote dev into preview'; exit 1; fi
+          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' VERSION
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/admin/package-lock.json
+      - name: Backend tests and build
+        working-directory: backend
+        run: |
+          go test ./...
+          go build ./...
+      - name: Frontend tests and build
+        working-directory: frontend/admin
+        run: |
+          npm ci
+          npm test -- --run
+          npm run build
+      - name: Container smoke test
+        run: |
+          docker build -f backend/Dockerfile -t gravitylink-ci .
+          docker run -d --name gravitylink-ci -p 127.0.0.1:28081:8081 -e CONFIG_FILE=/data/gravitylink.json gravitylink-ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:28081/api/setup/status | grep -q 'setup_required'; then exit 0; fi
+            sleep 2
+          done
+          docker logs gravitylink-ci
+          exit 1
+  publish:
+    name: Publish
+    needs: checks
+    if: github.event_name != 'pull_request' && contains(fromJSON('["dev","preview","stable"]'), github.ref_name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      IMAGE: 5plus1/gravitylink
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Plan release
+        id: plan
+        env:
+          CHANNEL: ${{ github.ref_name }}
+        run: |
+          version=$(tr -d '\r\n' < VERSION)
+          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$version"
+          if [[ "$CHANNEL" == stable ]]; then
+            tag="v${version}"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA" || { echo 'Version already belongs to another commit. Update VERSION.'; exit 1; }
+              if gh release view "$tag" >/dev/null 2>&1; then echo 'skip=true' >> "$GITHUB_OUTPUT"; exit 0; fi
+            fi
+            image_version="$version"
+          else
+            image_version="${version}-${CHANNEL}.${GITHUB_RUN_NUMBER}"
+            tag="v${image_version}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$image_version" >> "$GITHUB_OUTPUT"
+          {
+            echo 'tags<<EOF'
+            echo "$IMAGE:$image_version"
+            echo "$IMAGE:$CHANNEL"
+            if [[ "$CHANNEL" == stable ]]; then echo "$IMAGE:latest"; fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        if: steps.plan.outputs.skip != 'true'
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        if: steps.plan.outputs.skip != 'true'
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: steps.plan.outputs.skip != 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: image
+        if: steps.plan.outputs.skip != 'true'
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.plan.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/five-plus-one/GravityLink
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.plan.outputs.version }}
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}
+      - name: Create GitHub release
+        if: steps.plan.outputs.skip != 'true' && github.ref_name != 'dev'
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          IMAGE_VERSION: ${{ steps.plan.outputs.version }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          CHANNEL: ${{ github.ref_name }}
+        run: |
+          printf 'Container: `%s:%s`\n\nDigest: `%s`\n\nPlatforms: linux/amd64, linux/arm64\n' "$IMAGE" "$IMAGE_VERSION" "$DIGEST" > release-notes.md
+          args=()
+          if [[ "$CHANNEL" == preview ]]; then args+=(--prerelease --latest=false); else args+=(--latest); fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then exit 0; fi
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "GravityLink $RELEASE_TAG" --generate-notes --notes-file release-notes.md "${args[@]}"
+      - name: Publish summary
+        if: steps.plan.outputs.skip != 'true'
+        env:
+          TAGS: ${{ steps.plan.outputs.tags }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          printf '## Published container\n\n```\n%s\n```\n\nDigest: `%s`\n' "$TAGS" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"

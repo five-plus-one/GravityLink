@@ -4,3 +4,8 @@ frontend/admin/node_modules
 frontend/admin/dist
 backend/tmp
 *.log
+
+**/.env
+**/.env.*
+**/__pycache__
+**/*.dpapi

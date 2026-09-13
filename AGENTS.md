@@ -48,7 +48,9 @@ GravityLink/
 
 ## 分支策略
 
-- `main`：稳定可发布版本
+- `stable`：正式发布与默认分支
+- `preview`：发布前验收分支，由 dev 晋级
+- `main`：保留历史
 - `dev`：日常开发主分支
 - `feat/<name>`：功能分支，合并到 dev
 
@@ -59,5 +61,5 @@ GravityLink/
 cd backend && go build ./... && go test ./...
 
 # 前端
-cd frontend && npm run type-check && npm run build
+cd frontend/admin && npm run type-check && npm run build
 ```
