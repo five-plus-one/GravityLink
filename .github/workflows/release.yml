@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}-${{ github.event_name }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   checks:
