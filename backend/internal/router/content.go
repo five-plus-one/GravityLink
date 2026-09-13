@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/model"
 	"gravitylink/backend/internal/response"
 	"gravitylink/backend/internal/service"
@@ -12,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,6 +26,9 @@ func httpURL(value string) bool {
 func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Dependencies, domains *service.DomainCache) {
 	dir := filepath.Dir(deps.Config.ConfigFile)
 	uploads := filepath.Join(dir, "uploads")
+	storage := service.NewStorageService(deps.DB, dir)
+	registerStorageRoutes(admin, storage)
+	registerMaterialManagement(admin, deps.DB)
 	wx := service.NewWechatService(deps.DB, dir)
 	fail := func(c *gin.Context) { response.Error(c, 400, 4001, "配置无效或资源不可用") }
 	admin.GET("/wechat-config", func(c *gin.Context) {
@@ -63,7 +66,16 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 	})
 	admin.GET("/materials", func(c *gin.Context) {
 		var items []model.Material
-		if deps.DB.Order("id DESC").Find(&items).Error != nil {
+		hidden, err := hiddenMaterials(deps.DB)
+		if err != nil {
+			fail(c)
+			return
+		}
+		query := deps.DB.Order("id DESC")
+		if len(hidden) > 0 {
+			query = query.Where("id NOT IN ?", hidden)
+		}
+		if query.Find(&items).Error != nil {
 			fail(c)
 			return
 		}
@@ -71,7 +83,7 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 	})
 	admin.POST("/materials", func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 6<<20)
-		f, _, e := c.Request.FormFile("file")
+		f, header, e := c.Request.FormFile("file")
 		if e != nil {
 			fail(c)
 			return
@@ -96,15 +108,16 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 			return
 		}
 		name := hex.EncodeToString(id) + ext
-		if os.MkdirAll(uploads, 0700) != nil {
-			fail(c)
+		address, err := storage.Upload(c.Request.Context(), name, b)
+		if err != nil {
+			response.Error(c, 400, 4001, err.Error())
 			return
 		}
-		if os.WriteFile(filepath.Join(uploads, name), b, 0600) != nil {
-			fail(c)
-			return
+		displayName := filepath.Base(header.Filename)
+		if len([]rune(displayName)) > 255 {
+			displayName = name
 		}
-		item := model.Material{Name: name, Path: "/uploads/" + name}
+		item := model.Material{Name: displayName, Path: address}
 		if deps.DB.Create(&item).Error != nil {
 			fail(c)
 			return
@@ -118,8 +131,13 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 			return
 		}
 		var item model.Material
-		if deps.DB.Where("path = ?", "/uploads/"+name).First(&item).Error != nil {
+		if deps.DB.Where("name = ? OR path LIKE ?", name, "%/"+strings.NewReplacer("%", "\\%", "_", "\\_").Replace(name)).First(&item).Error != nil {
 			c.Status(404)
+			return
+		}
+		if httpURL(item.Path) {
+			c.Header("Cache-Control", "no-cache")
+			c.Redirect(http.StatusFound, item.Path)
 			return
 		}
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -253,3 +271,75 @@ var data={title:el.dataset.title||'',desc:el.dataset.desc||'',imgUrl:el.dataset.
 if(/MicroMessenger/i.test(navigator.userAgent)) fetch(location.pathname+'/signature?url='+encodeURIComponent(pageUrl)).then(function(r){return r.json()}).then(function(r){if(r.code!==0)throw Error(r.message);wx.config(Object.assign({},r.data,{debug:false,jsApiList:['updateAppMessageShareData','updateTimelineShareData']}));wx.ready(function(){wx.updateAppMessageShareData(data);wx.updateTimelineShareData(data);document.getElementById('status').textContent='请点击右上角菜单，分享给朋友或朋友圈。'});wx.error(function(){document.getElementById('status').textContent='分享配置失败，请联系管理员检查安全域名。'})}).catch(function(){document.getElementById('status').textContent='微信分享暂不可用，请联系管理员检查公众号配置。'});
 })();
 </script></html>`))
+
+func registerStorageRoutes(admin *gin.RouterGroup, storage *service.StorageService) {
+	admin.POST("/materials/delete", func(c *gin.Context) {
+		var input struct {
+			IDs []uint64 `json:"ids"`
+		}
+		if c.ShouldBindJSON(&input) != nil || len(input.IDs) == 0 || len(input.IDs) > 100 {
+			response.Error(c, 400, 4001, "请选择1至100张图片")
+			return
+		}
+		results := []gin.H{}
+		seen := map[uint64]bool{}
+		for _, id := range input.IDs {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			err := storage.DeleteMaterial(c.Request.Context(), id)
+			result := gin.H{"id": id, "deleted": err == nil}
+			if err != nil {
+				result["error"] = err.Error()
+			}
+			results = append(results, result)
+		}
+		response.OK(c, gin.H{"items": results})
+	})
+	admin.POST("/storage/check", middleware.RequireRole("super_admin"), func(c *gin.Context) {
+		var cfg service.StorageConfig
+		if c.ShouldBindJSON(&cfg) != nil {
+			response.Error(c, 400, 4001, "请检查存储配置")
+			return
+		}
+		result, err := storage.Check(c.Request.Context(), cfg)
+		if err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		response.OK(c, result)
+	})
+	admin.GET("/storage", middleware.RequireRole("super_admin"), func(c *gin.Context) {
+		cfg, err := storage.Status(c.Request.Context())
+		if err != nil {
+			response.Error(c, 500, 5000, "读取存储配置失败")
+			return
+		}
+		response.OK(c, cfg)
+	})
+	admin.PUT("/storage", middleware.RequireRole("super_admin"), func(c *gin.Context) {
+		var cfg service.StorageConfig
+		if c.ShouldBindJSON(&cfg) != nil {
+			response.Error(c, 400, 4001, "请检查存储配置")
+			return
+		}
+		if err := storage.Save(c.Request.Context(), cfg); err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		response.OK(c, gin.H{"saved": true})
+	})
+	admin.POST("/materials/:id/migrate", middleware.RequireRole("super_admin"), func(c *gin.Context) {
+		id, ok := parseID(c)
+		if !ok {
+			return
+		}
+		item, err := storage.Migrate(c.Request.Context(), id)
+		if err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		response.OK(c, item)
+	})
+}

@@ -29,7 +29,9 @@ func (s *SystemConfigService) List(ctx context.Context) (map[string]string, erro
 	}
 	configs := make(map[string]string, len(items))
 	for _, item := range items {
-		configs[item.KeyName] = item.Value
+		if !strings.HasPrefix(item.KeyName, "storage.") && item.KeyName != labelCatalogKey && item.KeyName != "materials.hidden" {
+			configs[item.KeyName] = item.Value
+		}
 	}
 	return configs, nil
 }
@@ -37,7 +39,7 @@ func (s *SystemConfigService) List(ctx context.Context) (map[string]string, erro
 func (s *SystemConfigService) Update(ctx context.Context, input SystemConfigInput) (map[string]string, error) {
 	for key, value := range input.Configs {
 		key = strings.TrimSpace(key)
-		if key == "" {
+		if key == "" || strings.HasPrefix(key, "storage.") || key == labelCatalogKey || key == "materials.hidden" {
 			continue
 		}
 		item := model.SystemConfig{KeyName: key, Value: value}

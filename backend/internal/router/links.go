@@ -25,6 +25,35 @@ func registerLinkRoutes(group *gin.RouterGroup, links *service.LinkService, cfg 
 
 	adminOnly := middleware.RequireAnyRole(cfg.AdminAllowedRoles...)
 
+	group.GET("/link-labels", func(c *gin.Context) {
+		result, err := links.Labels(c.Request.Context())
+		writeLinkResult(c, result, err)
+	})
+	group.POST("/link-labels", adminOnly, func(c *gin.Context) {
+		var input service.LabelMutation
+		if c.ShouldBindJSON(&input) != nil {
+			response.Error(c, 400, 4001, "invalid input")
+			return
+		}
+		if err := links.MutateLabels(c.Request.Context(), input); err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		response.OK(c, gin.H{"updated": true})
+	})
+	group.POST("/links/bulk", adminOnly, func(c *gin.Context) {
+		var input service.BulkLinksInput
+		if c.ShouldBindJSON(&input) != nil {
+			response.Error(c, 400, 4001, "invalid input")
+			return
+		}
+		if err := links.BulkUpdate(c.Request.Context(), input); err != nil {
+			response.Error(c, 400, 4001, err.Error())
+			return
+		}
+		response.OK(c, gin.H{"updated": true})
+	})
+
 	group.POST("/links", adminOnly, func(c *gin.Context) {
 		var input service.CreateLinkInput
 		if err := c.ShouldBindJSON(&input); err != nil {

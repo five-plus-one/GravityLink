@@ -109,6 +109,9 @@ func EnsureSchema(db *gorm.DB) error {
 	if err := db.Exec("CREATE TABLE IF NOT EXISTS access_logs_archive LIKE access_logs").Error; err != nil {
 		return err
 	}
+	if err := MigrateVersions(db); err != nil {
+		return err
+	}
 	return VerifySchema(db)
 }
 

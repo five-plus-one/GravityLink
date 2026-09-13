@@ -13,6 +13,21 @@ import (
 )
 
 func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
+	group.GET("/stats/window", func(c *gin.Context) {
+		start, e1 := parseVisitorTime(c.Query("start"), false)
+		end, e2 := parseVisitorTime(c.Query("end"), true)
+		if e1 != nil || e2 != nil || start.IsZero() || end.IsZero() || !start.Before(end) || end.Sub(start) > 90*24*time.Hour {
+			response.Error(c, 400, 4202, "请选择跨度不超过90天的有效时段")
+			return
+		}
+		id, err := strconv.ParseUint(c.DefaultQuery("link_id", "0"), 10, 64)
+		if err != nil {
+			response.Error(c, 400, 4202, "请选择有效链接")
+			return
+		}
+		data, err := stats.Window(c.Request.Context(), id, start, end)
+		writeStatResult(c, data, err)
+	})
 	// 访客记录查询
 	group.GET("/stats/visitors", func(c *gin.Context) {
 		q := service.VisitorLogQuery{
@@ -21,15 +36,14 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		if v := c.Query("link_id"); v != "" {
 			q.LinkID, _ = strconv.ParseUint(v, 10, 64)
 		}
-		if v := c.Query("start"); v != "" {
-			if t, err := time.Parse("2006-01-02", v); err == nil {
-				q.Start = t
-			}
+		var err error
+		q.Start, err = parseVisitorTime(c.Query("start"), false)
+		if err == nil {
+			q.End, err = parseVisitorTime(c.Query("end"), true)
 		}
-		if v := c.Query("end"); v != "" {
-			if t, err := time.Parse("2006-01-02", v); err == nil {
-				q.End = t.Add(24*time.Hour - time.Second)
-			}
+		if err != nil || (!q.Start.IsZero() && !q.End.IsZero() && !q.Start.Before(q.End)) {
+			response.Error(c, 400, 4202, "请选择有效的开始和结束时间")
+			return
 		}
 		q.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "50"))
 		q.Offset, _ = strconv.Atoi(c.DefaultQuery("offset", "0"))
@@ -43,13 +57,48 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		writeStatResult(c, data, err)
 	})
 	group.GET("/stats/overview/daily", func(c *gin.Context) {
-		start, end := parseDateRange(c)
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
 		data, err := stats.DailyAll(c.Request.Context(), start, end)
 		writeStatResult(c, data, err)
 	})
 	group.GET("/stats/overview/hourly", func(c *gin.Context) {
+		if c.Query("date") == "" && c.Query("start") == "" && c.Query("end") == "" {
+			id, _ := strconv.ParseUint(c.Param("link_id"), 10, 64)
+			data, err := stats.RollingHourly(c.Request.Context(), id, time.Now())
+			writeStatResult(c, data, err)
+			return
+		}
 		date := parseDate(c.DefaultQuery("date", time.Now().Format("2006-01-02")), time.Now())
-		data, err := stats.HourlyAll(c.Request.Context(), date)
+		start, end := date, date
+		if c.Query("start") != "" || c.Query("end") != "" {
+			var valid bool
+			start, end, valid = parseDateRange(c)
+			if !valid {
+				return
+			}
+		}
+		data, err := stats.HourlyRange(c.Request.Context(), 0, start, end)
+		writeStatResult(c, data, err)
+	})
+
+	group.GET("/stats/overview/geo", func(c *gin.Context) {
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
+		data, err := stats.Geo(c.Request.Context(), 0, start, end)
+		writeStatResult(c, data, err)
+	})
+
+	group.GET("/stats/overview/device", func(c *gin.Context) {
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
+		data, err := stats.Device(c.Request.Context(), 0, start, end)
 		writeStatResult(c, data, err)
 	})
 
@@ -67,7 +116,10 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		if !ok {
 			return
 		}
-		start, end := parseDateRange(c)
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
 		data, err := stats.Daily(c.Request.Context(), linkID, start, end)
 		writeStatResult(c, data, err)
 	})
@@ -77,8 +129,22 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		if !ok {
 			return
 		}
+		if c.Query("date") == "" && c.Query("start") == "" && c.Query("end") == "" {
+			id, _ := strconv.ParseUint(c.Param("link_id"), 10, 64)
+			data, err := stats.RollingHourly(c.Request.Context(), id, time.Now())
+			writeStatResult(c, data, err)
+			return
+		}
 		date := parseDate(c.DefaultQuery("date", time.Now().Format("2006-01-02")), time.Now())
-		data, err := stats.Hourly(c.Request.Context(), linkID, date)
+		start, end := date, date
+		if c.Query("start") != "" || c.Query("end") != "" {
+			var valid bool
+			start, end, valid = parseDateRange(c)
+			if !valid {
+				return
+			}
+		}
+		data, err := stats.HourlyRange(c.Request.Context(), linkID, start, end)
 		writeStatResult(c, data, err)
 	})
 
@@ -87,7 +153,10 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		if !ok {
 			return
 		}
-		start, end := parseDateRange(c)
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
 		data, err := stats.Geo(c.Request.Context(), linkID, start, end)
 		writeStatResult(c, data, err)
 	})
@@ -97,7 +166,10 @@ func registerStatRoutes(group *gin.RouterGroup, stats *service.StatService) {
 		if !ok {
 			return
 		}
-		start, end := parseDateRange(c)
+		start, end, valid := parseDateRange(c)
+		if !valid {
+			return
+		}
 		data, err := stats.Device(c.Request.Context(), linkID, start, end)
 		writeStatResult(c, data, err)
 	})
@@ -125,20 +197,29 @@ func parseLinkID(c *gin.Context) (uint64, bool) {
 	return linkID, true
 }
 
-func parseDateRange(c *gin.Context) (time.Time, time.Time) {
+func parseDateRange(c *gin.Context) (time.Time, time.Time, bool) {
 	end := parseDate(c.Query("end"), time.Now())
-	start := parseDate(c.Query("start"), end.AddDate(0, 0, -30))
-	if end.Sub(start) > 90*24*time.Hour {
-		start = end.AddDate(0, 0, -90)
+	start := parseDate(c.Query("start"), end.AddDate(0, 0, -29))
+	for _, key := range []string{"start", "end"} {
+		if value := c.Query(key); value != "" {
+			if _, err := time.ParseInLocation("2006-01-02", value, time.Local); err != nil {
+				response.Error(c, 400, 4202, "请选择有效日期")
+				return start, end, false
+			}
+		}
 	}
-	return start, end
+	if start.After(end) || end.Sub(start) > 90*24*time.Hour {
+		response.Error(c, 400, 4202, "请选择开始早于结束、跨度不超过90天的日期范围")
+		return start, end, false
+	}
+	return start, end, true
 }
 
 func parseDate(value string, fallback time.Time) time.Time {
 	if value == "" {
 		return fallback
 	}
-	parsed, err := time.Parse("2006-01-02", value)
+	parsed, err := time.ParseInLocation("2006-01-02", value, time.Local)
 	if err != nil {
 		return fallback
 	}
@@ -151,4 +232,19 @@ func writeStatResult(c *gin.Context, data interface{}, err error) {
 		return
 	}
 	response.OK(c, data)
+}
+
+func parseVisitorTime(value string, end bool) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	if len(value) == 10 {
+		t, err := time.ParseInLocation("2006-01-02", value, time.Local)
+		if end {
+			t = t.AddDate(0, 0, 1)
+		}
+		return t, err
+	}
+	t, err := time.Parse(time.RFC3339Nano, value)
+	return t.In(time.Local), err
 }

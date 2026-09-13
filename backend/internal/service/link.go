@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -41,6 +42,8 @@ type LinkService struct {
 }
 
 type CreateLinkInput struct {
+	Category        string         `json:"category"`
+	Tags            []string       `json:"tags"`
 	Type            string         `json:"type"`
 	Code            string         `json:"code"`
 	EntryDomainID   uint64         `json:"entry_domain_id"`
@@ -66,6 +69,8 @@ type ChannelInput struct {
 }
 
 type UpdateLinkInput struct {
+	Category       *string    `json:"category"`
+	Tags           *[]string  `json:"tags"`
 	TargetURL      *string    `json:"target_url"`
 	Title          *string    `json:"title"`
 	ExpireAt       *time.Time `json:"expire_at"`
@@ -86,6 +91,10 @@ func NewLinkService(db *gorm.DB, linkCache *cache.LinkCache, routing *RoutingSer
 }
 
 func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.Link, error) {
+	category, tags, err := normalizeLinkLabels(input.Category, input.Tags)
+	if err != nil {
+		return model.Link{}, err
+	}
 	linkType := input.Type
 	if linkType == "" {
 		linkType = model.LinkTypeShort
@@ -147,15 +156,16 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		TargetURL:       targetURLPtr,
 		LandingPageID:   input.LandingPageID,
 		Title:           title,
-		AccessRule:      accessRule,
-		OnlineSchedule:  input.OnlineSchedule,
-		ExpireAt:        input.ExpireAt,
-		Status:          model.LinkStatusActive,
-		CreatedBy:       input.CreatedBy,
+		Category:        category, Tags: tags,
+		AccessRule:     accessRule,
+		OnlineSchedule: input.OnlineSchedule,
+		ExpireAt:       input.ExpireAt,
+		Status:         model.LinkStatusActive,
+		CreatedBy:      input.CreatedBy,
 	}
 
 	if link.Code != "" {
-		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Create(&link).Error; err != nil {
 				return err
 			}
@@ -170,7 +180,7 @@ func (s *LinkService) Create(ctx context.Context, input CreateLinkInput) (model.
 		return s.Get(ctx, link.ID)
 	}
 
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		link.Code = fmt.Sprintf("_pending_%d", time.Now().UnixNano())
 		if len(link.Code) > 32 {
 			link.Code = link.Code[:32]
@@ -217,6 +227,26 @@ func (s *LinkService) List(ctx context.Context, linkType string) ([]model.Link, 
 	if err := query.Find(&links).Error; err != nil {
 		return nil, err
 	}
+	type detail struct {
+		ID    uint64
+		Kind  string
+		Views uint64
+	}
+	var details []detail
+	if err := s.db.WithContext(ctx).Raw(`SELECT l.id, CASE WHEN l.type='liveqr' THEN COALESCE(p.template,'liveqr') ELSE l.type END AS kind,
+ COALESCE(d.pv,0)+COALESCE(a.pv,0) AS views FROM links l LEFT JOIN landing_pages p ON p.id=l.landing_page_id
+ LEFT JOIN (SELECT link_id,SUM(pv) pv FROM stat_daily WHERE stat_date<CURRENT_DATE GROUP BY link_id) d ON d.link_id=l.id
+ LEFT JOIN (SELECT link_id,COUNT(*) pv FROM access_logs WHERE visited_at>=CURRENT_DATE GROUP BY link_id) a ON a.link_id=l.id`).Scan(&details).Error; err != nil {
+		return nil, err
+	}
+	byID := map[uint64]detail{}
+	for _, d := range details {
+		byID[d.ID] = d
+	}
+	for i := range links {
+		links[i].Kind = byID[links[i].ID].Kind
+		links[i].Views = byID[links[i].ID].Views
+	}
 	var domains []model.Domain
 	if err := s.db.WithContext(ctx).Where("type = ? AND status = ?", model.DomainTypeEntry, model.StatusActive).Find(&domains).Error; err != nil {
 		return nil, err
@@ -254,6 +284,25 @@ func (s *LinkService) Update(ctx context.Context, id uint64, input UpdateLinkInp
 	}
 
 	updates := map[string]interface{}{}
+	if input.Category != nil || input.Tags != nil {
+		category, tags := link.Category, link.Tags
+		if input.Category != nil {
+			category = *input.Category
+		}
+		if input.Tags != nil {
+			tags = *input.Tags
+		}
+		category, tags, err := normalizeLinkLabels(category, tags)
+		if err != nil {
+			return link, err
+		}
+		encoded, err := json.Marshal(tags)
+		if err != nil {
+			return link, err
+		}
+		updates["category"] = category
+		updates["tags"] = string(encoded)
+	}
 	if input.TargetURL != nil {
 		if err := validateTargetURL(*input.TargetURL); err != nil {
 			return model.Link{}, err
@@ -302,7 +351,7 @@ func (s *LinkService) Update(ctx context.Context, id uint64, input UpdateLinkInp
 	}
 
 	if len(updates) > 0 {
-		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&link).Updates(updates).Error; err != nil {
 				return err
 			}
@@ -619,4 +668,24 @@ func addQueryIfMissing(query url.Values, key string, value string) {
 		return
 	}
 	query.Set(key, value)
+}
+
+func normalizeLinkLabels(category string, tags []string) (string, []string, error) {
+	category = strings.TrimSpace(category)
+	if len([]rune(category)) > 80 || len(tags) > 20 {
+		return "", nil, errors.New("分类最多80字，标签最多20个")
+	}
+	result := []string{}
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if len([]rune(tag)) > 40 {
+			return "", nil, errors.New("每个标签最多40字")
+		}
+		if tag != "" && !seen[tag] {
+			result = append(result, tag)
+			seen[tag] = true
+		}
+	}
+	return category, result, nil
 }

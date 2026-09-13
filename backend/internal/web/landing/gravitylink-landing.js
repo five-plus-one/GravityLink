@@ -45,8 +45,7 @@
       issueBtn.disabled = true;
       issueBtn.textContent = '领取中…';
       if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
-      if (resultEl) resultEl.hidden = true;
-      if (copyEl) copyEl.hidden = true;
+
       try {
         const projectId = issueBtn.getAttribute('data-project-id');
         const password = pwdInput ? pwdInput.value.trim() : '';
@@ -59,7 +58,7 @@
         if (!res.ok || body.code !== 0) {
           const msg = (body && body.message) || '领取失败，请稍后重试';
           if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
-          if (pwdWrap && (res.status === 400 || res.status === 403)) pwdWrap.hidden = false;
+          if (pwdWrap && (msg === '请输入提取口令' || msg === '提取口令错误')) { pwdWrap.hidden = false; if(pwdInput) pwdInput.focus(); }
           return;
         }
         lastContent = (body.data && body.data.content) || '';
@@ -79,7 +78,10 @@
     if (copyEl) {
       copyEl.addEventListener('click', async () => {
         if (!lastContent) return;
-        try { await navigator.clipboard.writeText(lastContent); } catch { /* ignore */ }
+        try {
+          if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(lastContent);
+          else { const input=document.createElement('textarea'); input.value=lastContent; document.body.appendChild(input); input.select(); const copied=document.execCommand('copy'); input.remove(); if(!copied) throw new Error('copy'); }
+        } catch { copyEl.textContent='请长按卡密手动复制'; return; }
         copyEl.textContent = '已复制 ✓';
         window.setTimeout(() => { copyEl.textContent = '复制卡密'; }, 2000);
       });

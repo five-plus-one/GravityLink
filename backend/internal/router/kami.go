@@ -29,17 +29,20 @@ func registerKamiRoutes(group *gin.RouterGroup, svc *service.KamiService) {
 			Issued    int64  `json:"issued"`
 		}
 		type projectDTO struct {
-			ID        uint64  `json:"id"`
-			Title     string  `json:"title"`
-			Type      string  `json:"type"`
-			Status    string  `json:"status"`
-			Remaining int64   `json:"remaining"`
-			Issued    int64   `json:"issued"`
+			PasswordConfigured bool   `json:"password_configured"`
+			RepeatPolicy       string `json:"repeat_policy"`
+			RepeatIntervalSec  uint   `json:"repeat_interval_sec"`
+			ID                 uint64 `json:"id"`
+			Title              string `json:"title"`
+			Type               string `json:"type"`
+			Status             string `json:"status"`
+			Remaining          int64  `json:"remaining"`
+			Issued             int64  `json:"issued"`
 		}
 		dtos := make([]projectDTO, len(projects))
 		for i, p := range projects {
 			rem, iss, _ := svc.ProjectStats(c.Request.Context(), p.ID)
-			dtos[i] = projectDTO{ID: p.ID, Title: p.Title, Type: p.Type, Status: p.Status, Remaining: rem, Issued: iss}
+			dtos[i] = projectDTO{PasswordConfigured: p.Password != nil && *p.Password != "", RepeatPolicy: p.RepeatPolicy, RepeatIntervalSec: p.RepeatIntervalSec, ID: p.ID, Title: p.Title, Type: p.Type, Status: p.Status, Remaining: rem, Issued: iss}
 		}
 		response.OK(c, gin.H{"items": dtos, "total": len(dtos)})
 	})
@@ -68,11 +71,11 @@ func registerKamiRoutes(group *gin.RouterGroup, svc *service.KamiService) {
 			return
 		}
 		var input struct {
-			Title        *string `json:"title"`
-			Password     *string `json:"password"`
-			RepeatPolicy *string `json:"repeat_policy"`
-			RepeatIntervalSec *uint `json:"repeat_interval_sec"`
-			Status       *string `json:"status"`
+			Title             *string `json:"title"`
+			Password          *string `json:"password"`
+			RepeatPolicy      *string `json:"repeat_policy"`
+			RepeatIntervalSec *uint   `json:"repeat_interval_sec"`
+			Status            *string `json:"status"`
 		}
 		if c.ShouldBindJSON(&input) != nil {
 			response.Error(c, 400, 4001, "invalid input")
@@ -193,7 +196,7 @@ func registerKamiPublicRoutes(group *gin.RouterGroup, svc *service.KamiService) 
 
 		result, err := svc.Issue(
 			c.Request.Context(), projectID, input.Password,
-			c.ClientIP(), c.Request.UserAgent(), "",
+			c.ClientIP(), c.Request.UserAgent(), service.ParseUserAgent(c.Request.UserAgent()).Device,
 		)
 		if err != nil {
 			writeKamiError(c, err)

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -154,8 +155,34 @@ func TestJWTVerifierVerify(t *testing.T) {
 		}
 	}
 
+	t.Run("OIDC profile validates client subject and expiry", func(t *testing.T) {
+		cfg := verifier.config
+		cfg.LogtoAppID = "admin-client"
+		v := JWTVerifier{config: cfg}
+		p := validPayload()
+		p["aud"] = "admin-client"
+		p["preferred_username"] = "alice"
+		p["email"] = "alice@example.com"
+		token := makeToken(signingKey, p, "", "test-kid")
+		user, err := v.VerifyProfile(context.Background(), token, "user-123")
+		if err != nil || user.Username != "alice" || user.Email != "alice@example.com" {
+			t.Fatal("profile unavailable", err)
+		}
+		if _, err = v.VerifyProfile(context.Background(), token, "different-user"); err == nil {
+			t.Fatal("subject mismatch accepted")
+		}
+		p["aud"] = "other-client"
+		if _, err = v.VerifyProfile(context.Background(), makeToken(signingKey, p, "", "test-kid"), "user-123"); err == nil {
+			t.Fatal("client mismatch accepted")
+		}
+		p["aud"] = "admin-client"
+		delete(p, "exp")
+		if _, err = v.VerifyProfile(context.Background(), makeToken(signingKey, p, "", "test-kid"), "user-123"); err == nil {
+			t.Fatal("missing expiry accepted")
+		}
+	})
 	t.Run("合法 token 通过并提取身份", func(t *testing.T) {
-		user, err := verifier.Verify(t.Context(), makeToken(signingKey, validPayload(), "", "test-kid"))
+		user, err := verifier.Verify(context.Background(), makeToken(signingKey, validPayload(), "", "test-kid"))
 		if err != nil {
 			t.Fatalf("Verify() error = %v", err)
 		}
@@ -165,7 +192,7 @@ func TestJWTVerifierVerify(t *testing.T) {
 	})
 
 	t.Run("签名不符拒绝", func(t *testing.T) {
-		if _, err := verifier.Verify(t.Context(), makeToken(otherKey, validPayload(), "", "test-kid")); err == nil {
+		if _, err := verifier.Verify(context.Background(), makeToken(otherKey, validPayload(), "", "test-kid")); err == nil {
 			t.Error("expected error for wrong signature")
 		}
 	})
@@ -173,7 +200,7 @@ func TestJWTVerifierVerify(t *testing.T) {
 	t.Run("过期 token 拒绝", func(t *testing.T) {
 		payload := validPayload()
 		payload["exp"] = float64(time.Now().Add(-time.Hour).Unix())
-		if _, err := verifier.Verify(t.Context(), makeToken(signingKey, payload, "", "test-kid")); err == nil {
+		if _, err := verifier.Verify(context.Background(), makeToken(signingKey, payload, "", "test-kid")); err == nil {
 			t.Error("expected error for expired token")
 		}
 	})
@@ -181,25 +208,25 @@ func TestJWTVerifierVerify(t *testing.T) {
 	t.Run("issuer 不符拒绝", func(t *testing.T) {
 		payload := validPayload()
 		payload["iss"] = "https://evil.com"
-		if _, err := verifier.Verify(t.Context(), makeToken(signingKey, payload, "", "test-kid")); err == nil {
+		if _, err := verifier.Verify(context.Background(), makeToken(signingKey, payload, "", "test-kid")); err == nil {
 			t.Error("expected error for wrong issuer")
 		}
 	})
 
 	t.Run("非 RS256 算法拒绝", func(t *testing.T) {
-		if _, err := verifier.Verify(t.Context(), makeToken(signingKey, validPayload(), "HS256", "test-kid")); err == nil {
+		if _, err := verifier.Verify(context.Background(), makeToken(signingKey, validPayload(), "HS256", "test-kid")); err == nil {
 			t.Error("expected error for non-RS256 alg")
 		}
 	})
 
 	t.Run("未知 kid 拒绝", func(t *testing.T) {
-		if _, err := verifier.Verify(t.Context(), makeToken(signingKey, validPayload(), "", "unknown-kid")); err == nil {
+		if _, err := verifier.Verify(context.Background(), makeToken(signingKey, validPayload(), "", "unknown-kid")); err == nil {
 			t.Error("expected error for unknown kid")
 		}
 	})
 
 	t.Run("格式非法 token 拒绝", func(t *testing.T) {
-		if _, err := verifier.Verify(t.Context(), "not-a-jwt"); err == nil {
+		if _, err := verifier.Verify(context.Background(), "not-a-jwt"); err == nil {
 			t.Error("expected error for malformed token")
 		}
 	})

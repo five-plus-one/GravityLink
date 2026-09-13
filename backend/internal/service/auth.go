@@ -125,6 +125,20 @@ func (s *AuthService) ProvisionLogto(identity Identity) (model.User, error) {
 	var user model.User
 	err := s.db.Where("sso_id = ?", identity.Subject).First(&user).Error
 	if err == nil {
+		updates := map[string]interface{}{}
+		if identity.Username != "" && identity.Username != user.Username {
+			updates["username"] = identity.Username
+			user.Username = identity.Username
+		}
+		if identity.Email != "" && (user.Email == nil || *user.Email != identity.Email) {
+			updates["email"] = identity.Email
+			user.Email = &identity.Email
+		}
+		if len(updates) > 0 {
+			if err := s.db.Model(&user).Updates(updates).Error; err != nil {
+				return user, err
+			}
+		}
 		return user, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {

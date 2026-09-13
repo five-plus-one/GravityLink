@@ -74,6 +74,16 @@ func AuthRequired(cfg config.Config, logger *slog.Logger, databases ...*gorm.DB)
 			c.Abort()
 			return
 		}
+		if raw := c.GetHeader("X-OIDC-ID-Token"); raw != "" {
+			profile, profileErr := verifier.VerifyProfile(c.Request.Context(), raw, identity.Subject)
+			if profileErr != nil {
+				response.Error(c, 401, 4401, "登录资料验证失败，请重新登录")
+				c.Abort()
+				return
+			}
+			identity.Username = firstNonEmpty(profile.Username, identity.Username)
+			identity.Email = firstNonEmpty(profile.Email, identity.Email)
+		}
 		if db == nil {
 			c.Set(ContextUserKey, identity)
 			c.Next()
@@ -372,7 +382,7 @@ func userFromPayload(payload jwtPayload) AuthUser {
 	return AuthUser{
 		Subject:    stringClaim(payload, "sub"),
 		Email:      stringClaim(payload, "email"),
-		Username:   firstNonEmpty(stringClaim(payload, "username"), stringClaim(payload, "name")),
+		Username:   firstNonEmpty(stringClaim(payload, "preferred_username"), stringClaim(payload, "username"), stringClaim(payload, "name")),
 		Status:     model.StatusActive,
 		AuthSource: model.AuthSourceLogto,
 	}
@@ -425,4 +435,32 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (v JWTVerifier) VerifyProfile(ctx context.Context, raw, subject string) (AuthUser, error) {
+	if v.config.LogtoAppID == "" || v.config.LogtoIssuer == "" || subject == "" {
+		return AuthUser{}, errTokenInvalid
+	}
+	cfg := v.config
+	cfg.LogtoAudience = cfg.LogtoAppID
+	user, err := (JWTVerifier{config: cfg}).Verify(ctx, raw)
+	if err != nil {
+		return AuthUser{}, err
+	}
+	parts := strings.Split(raw, ".")
+	var payload jwtPayload
+	if len(parts) != 3 || decodeJWTPart(parts[1], &payload) != nil {
+		return AuthUser{}, errTokenInvalid
+	}
+	exp, ok := numberClaim(payload, "exp")
+	if !ok || exp <= float64(time.Now().Unix()) || user.Subject != subject {
+		return AuthUser{}, errTokenInvalid
+	}
+	if azp := stringClaim(payload, "azp"); azp != "" && azp != cfg.LogtoAppID {
+		return AuthUser{}, errTokenInvalid
+	}
+	if aud, ok := payload["aud"].([]interface{}); ok && len(aud) > 1 && stringClaim(payload, "azp") != cfg.LogtoAppID {
+		return AuthUser{}, errTokenInvalid
+	}
+	return user, nil
 }

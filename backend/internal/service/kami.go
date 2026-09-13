@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"gravitylink/backend/internal/model"
 )
@@ -33,22 +35,22 @@ func NewKamiService(db *gorm.DB) *KamiService {
 // ---- 项目 CRUD ----
 
 type CreateKamiProjectInput struct {
-	Title            string  `json:"title"`
-	Type             string  `json:"type"`
-	Password         *string `json:"password"` // 提取口令，可选
-	RepeatPolicy     string  `json:"repeat_policy"` // never / allow
-	RepeatIntervalSec uint   `json:"repeat_interval_sec"`
+	Title             string  `json:"title"`
+	Type              string  `json:"type"`
+	Password          *string `json:"password"`      // 提取口令，可选
+	RepeatPolicy      string  `json:"repeat_policy"` // never / allow
+	RepeatIntervalSec uint    `json:"repeat_interval_sec"`
 }
 
 func (s *KamiService) CreateProject(ctx context.Context, input CreateKamiProjectInput, createdBy uint64) (*model.KamiProject, error) {
 	p := &model.KamiProject{
-		Title:            input.Title,
-		Type:             input.Type,
-		Password:         input.Password,
-		RepeatPolicy:     input.RepeatPolicy,
+		Title:             input.Title,
+		Type:              input.Type,
+		Password:          input.Password,
+		RepeatPolicy:      input.RepeatPolicy,
 		RepeatIntervalSec: input.RepeatIntervalSec,
-		Status:           model.StatusActive,
-		CreatedBy:        createdBy,
+		Status:            model.StatusActive,
+		CreatedBy:         createdBy,
 	}
 	if p.Title == "" {
 		return nil, fmt.Errorf("title is required")
@@ -68,11 +70,11 @@ func (s *KamiService) ListProjects(ctx context.Context, createdBy uint64) ([]mod
 }
 
 func (s *KamiService) UpdateProject(ctx context.Context, id uint64, input struct {
-	Title        *string `json:"title"`
-	Password     *string `json:"password"`
-	RepeatPolicy *string `json:"repeat_policy"`
-	RepeatIntervalSec *uint `json:"repeat_interval_sec"`
-	Status       *string `json:"status"`
+	Title             *string `json:"title"`
+	Password          *string `json:"password"`
+	RepeatPolicy      *string `json:"repeat_policy"`
+	RepeatIntervalSec *uint   `json:"repeat_interval_sec"`
+	Status            *string `json:"status"`
 }) (*model.KamiProject, error) {
 	var p model.KamiProject
 	if err := s.db.WithContext(ctx).First(&p, id).Error; err != nil {
@@ -80,9 +82,15 @@ func (s *KamiService) UpdateProject(ctx context.Context, id uint64, input struct
 	}
 	updates := map[string]any{}
 	if input.Title != nil {
-		updates["title"] = *input.Title
+		if strings.TrimSpace(*input.Title) == "" || len([]rune(*input.Title)) > 128 {
+			return nil, fmt.Errorf("项目标题不能为空，最多128字")
+		}
+		updates["title"] = strings.TrimSpace(*input.Title)
 	}
 	if input.Password != nil {
+		if len([]rune(*input.Password)) > 128 {
+			return nil, fmt.Errorf("口令最多128字")
+		}
 		updates["password"] = input.Password
 	}
 	if input.RepeatPolicy != nil && (*input.RepeatPolicy == "never" || *input.RepeatPolicy == "allow") {
@@ -118,8 +126,8 @@ type ImportKamiItem struct {
 
 type ImportResult struct {
 	Imported int `json:"imported"`
-	Dup      int   `json:"dup"`
-	Failed   int   `json:"failed"`
+	Dup      int `json:"dup"`
+	Failed   int `json:"failed"`
 }
 
 func (s *KamiService) ImportItems(ctx context.Context, projectID uint64, items []ImportKamiItem) (ImportResult, error) {
@@ -129,51 +137,51 @@ func (s *KamiService) ImportItems(ctx context.Context, projectID uint64, items [
 	if len(items) > 1000 {
 		return ImportResult{}, fmt.Errorf("max 1000 items per import")
 	}
-	// 去重：同项目内 content 唯一
 	var result ImportResult
-	batch := make([]model.KamiItem, 0, len(items))
-	for _, item := range items {
-		content := trim(item.Content)
-		if content == "" {
-			result.Failed++
-			continue
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var project model.KamiProject
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, projectID).Error; err != nil {
+			return ErrKamiProjectNotFound
 		}
-		km := model.KamiItem{
-			ProjectID:   projectID,
-			Content:     content,
-			Status:      "unissued",
-		}
-		if item.Note != "" {
-			km.Note = &item.Note
-		}
-		if item.ExpiresText != "" {
-			km.ExpiresText = &item.ExpiresText
-		}
-		batch = append(batch, km)
-	}
-	if len(batch) == 0 {
-		return result, nil
-	}
-	// 批量插入，跳过重复（content UNIQUE within project via application logic）
-	err := s.db.WithContext(ctx).CreateInBatches(batch, 200).Error
-	if err != nil {
-		// 若有重复键冲突，逐条插入统计
-		result.Failed = 0
-		for _, km := range batch {
-			if err := s.db.WithContext(ctx).Create(&km).Error; err != nil {
-				result.Dup++
-			} else {
-				result.Imported++
+		for _, input := range items {
+			content := trim(input.Content)
+			if content == "" {
+				result.Failed++
+				continue
 			}
+			var count int64
+			if err := tx.Model(&model.KamiItem{}).Where("project_id = ? AND content = ?", projectID, content).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				result.Dup++
+				continue
+			}
+			item := model.KamiItem{ProjectID: projectID, Content: content, Status: "unissued"}
+			if input.Note != "" {
+				item.Note = &input.Note
+			}
+			if input.ExpiresText != "" {
+				item.ExpiresText = &input.ExpiresText
+			}
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+			result.Imported++
 		}
-	} else {
-		result.Imported = len(batch)
-	}
-	return result, nil
+		return nil
+	})
+	return result, err
 }
 
 func (s *KamiService) ListItems(ctx context.Context, projectID uint64, limit, offset int) ([]model.KamiItem, int64, error) {
-	var items []model.KamiItem
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	items := []model.KamiItem{}
 	var total int64
 	q := s.db.WithContext(ctx).Model(&model.KamiItem{}).Where("project_id = ?", projectID)
 	q.Count(&total)
@@ -205,37 +213,49 @@ func (s *KamiService) Issue(ctx context.Context, projectID uint64, password, vis
 	if p.Status != model.StatusActive {
 		return nil, ErrKamiProjectNotFound
 	}
-	// 口令校验
-	if p.Password != nil && *p.Password != "" {
-		if password == "" {
-			return nil, ErrKamiPasswordRequired
-		}
-		if password != *p.Password {
-			return nil, ErrKamiPasswordWrong
-		}
-	}
-	// 重复提取校验（同 IP+同项目）
-	if p.RepeatPolicy != "allow" {
-		var count int64
-		s.db.WithContext(ctx).Model(&model.KamiIssuance{}).
-			Where("project_id = ? AND visitor_ip = ?", projectID, visitorIP).
-			Count(&count)
-		if count > 0 {
-			return nil, ErrKamiRepeatNotAllowed
-		}
-	} else if p.RepeatIntervalSec > 0 {
-		var last model.KamiIssuance
-		err := s.db.WithContext(ctx).
-			Where("project_id = ? AND visitor_ip = ?", projectID, visitorIP).
-			Order("id DESC").First(&last).Error
-		if err == nil && time.Since(last.CreatedAt) < time.Duration(p.RepeatIntervalSec)*time.Second {
-			return nil, ErrKamiTooFrequent
-		}
-	}
 
 	// 原子发码：一条事务内取 + 置 issued，用 FOR UPDATE SKIP LOCKED 防竞态
 	var item model.KamiItem
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Lock the project before checking the visitor's previous issuance.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&p, projectID).Error; err != nil {
+			return err
+		}
+		if p.Status != model.StatusActive {
+			return ErrKamiProjectNotFound
+		} // 口令校验
+		if p.Password != nil && *p.Password != "" {
+			if password == "" {
+				return ErrKamiPasswordRequired
+			}
+			if password != *p.Password {
+				return ErrKamiPasswordWrong
+			}
+		}
+
+		// 重复提取校验（同 IP+同项目）
+		if p.RepeatPolicy != "allow" {
+			var count int64
+			if err := tx.Model(&model.KamiIssuance{}).
+				Where("project_id = ? AND visitor_ip = ?", projectID, visitorIP).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return ErrKamiRepeatNotAllowed
+			}
+		} else if p.RepeatIntervalSec > 0 {
+			var last model.KamiIssuance
+			err := tx.
+				Where("project_id = ? AND visitor_ip = ?", projectID, visitorIP).
+				Order("id DESC").First(&last).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err == nil && time.Since(last.CreatedAt) < time.Duration(p.RepeatIntervalSec)*time.Second {
+				return ErrKamiTooFrequent
+			}
+		}
+
 		// 最旧未发放的卡密优先（FIFO）
 		result := tx.Raw(
 			"SELECT * FROM kami_items WHERE project_id = ? AND status = 'unissued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
@@ -272,7 +292,13 @@ func (s *KamiService) Issue(ctx context.Context, projectID uint64, password, vis
 // ---- 提取记录 ----
 
 func (s *KamiService) ListIssuances(ctx context.Context, projectID uint64, limit, offset int) ([]model.KamiIssuance, int64, error) {
-	var items []model.KamiIssuance
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	items := []model.KamiIssuance{}
 	var total int64
 	q := s.db.WithContext(ctx).Model(&model.KamiIssuance{}).Where("project_id = ?", projectID)
 	q.Count(&total)

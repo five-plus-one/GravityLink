@@ -10,8 +10,9 @@ import (
 )
 
 type StatService struct {
-	db    *gorm.DB
-	redis *redis.Client
+	db               *gorm.DB
+	redis            *redis.Client
+	archiveSourceApp bool
 }
 
 type SummaryStats struct {
@@ -29,8 +30,10 @@ type DailyPoint struct {
 }
 
 type HourlyPoint struct {
-	Hour uint8  `json:"hour"`
-	PV   uint64 `json:"pv"`
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+	Hour  uint8  `json:"hour"`
+	PV    uint64 `json:"pv"`
 }
 
 type LabelValue struct {
@@ -45,7 +48,7 @@ type DeviceStats struct {
 }
 
 func NewStatService(db *gorm.DB, redis *redis.Client) *StatService {
-	return &StatService{db: db, redis: redis}
+	return &StatService{db: db, redis: redis, archiveSourceApp: db.Migrator().HasColumn("access_logs_archive", "source_app")}
 }
 
 func (s *StatService) Summary(ctx context.Context, linkID uint64) (SummaryStats, error) {
@@ -55,7 +58,7 @@ func (s *StatService) Summary(ctx context.Context, linkID uint64) (SummaryStats,
 		UV uint64
 	}
 	var total totals
-	if err := s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0) AS pv, COALESCE(SUM(uv),0) AS uv").Where("link_id = ?", linkID).Scan(&total).Error; err != nil {
+	if err := s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0) AS pv, COALESCE(SUM(uv),0) AS uv").Where("link_id = ? AND stat_date < ?", linkID, time.Now().Format("2006-01-02")).Scan(&total).Error; err != nil {
 		return result, err
 	}
 	result.TotalPV = total.PV
@@ -86,7 +89,7 @@ func (s *StatService) SummaryAll(ctx context.Context) (SummaryStats, error) {
 		UV uint64
 	}
 	var total totals
-	if err := s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0) AS pv, COALESCE(SUM(uv),0) AS uv").Scan(&total).Error; err != nil {
+	if err := s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0) AS pv, COALESCE(SUM(uv),0) AS uv").Where("stat_date < ?", time.Now().Format("2006-01-02")).Scan(&total).Error; err != nil {
 		return result, err
 	}
 	result.TotalPV = total.PV
@@ -119,8 +122,8 @@ func (s *StatService) DailyAll(ctx context.Context, start, end time.Time) ([]Dai
 	if err := s.db.WithContext(ctx).Table("stat_daily").
 		Select("stat_date, SUM(pv) AS pv, SUM(uv) AS uv").
 		Where("stat_date BETWEEN ? AND ?", start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Group("stat_date").
-		Order("stat_date ASC").
+		Where("stat_date < ?", time.Now().Format("2006-01-02")).Group("stat_date").
+		Where("stat_date < ?", time.Now().Format("2006-01-02")).Order("stat_date ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -195,7 +198,7 @@ func (s *StatService) Daily(ctx context.Context, linkID uint64, start, end time.
 	if err := s.db.WithContext(ctx).Table("stat_daily").
 		Select("stat_date, pv, uv").
 		Where("link_id = ? AND stat_date BETWEEN ? AND ?", linkID, start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Order("stat_date ASC").
+		Where("stat_date < ?", time.Now().Format("2006-01-02")).Order("stat_date ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -259,11 +262,8 @@ func (s *StatService) Hourly(ctx context.Context, linkID uint64, date time.Time)
 }
 
 func (s *StatService) Geo(ctx context.Context, linkID uint64, start, end time.Time) ([]LabelValue, error) {
-	var rows []LabelValue
-	err := s.db.WithContext(ctx).Table("stat_geo").
-		Select("IF(province = '', country, province) AS label, COALESCE(SUM(pv),0) AS value").
-		Where("link_id = ? AND stat_date BETWEEN ? AND ?", linkID, start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Group("label").Order("value DESC").Limit(20).Scan(&rows).Error
+	rows := []LabelValue{}
+	err := s.distribution(ctx, "stat_geo", "COALESCE(NULLIF(province, ''), NULLIF(country, ''), '未知')", linkID, start, end, &rows)
 	return rows, err
 }
 
@@ -282,10 +282,58 @@ func (s *StatService) Device(ctx context.Context, linkID uint64, start, end time
 }
 
 func (s *StatService) aggregateLabel(ctx context.Context, column string, linkID uint64, start, end time.Time, dest *[]LabelValue) error {
-	return s.db.WithContext(ctx).Table("stat_device").
-		Select(column+" AS label, COALESCE(SUM(pv),0) AS value").
-		Where("link_id = ? AND stat_date BETWEEN ? AND ?", linkID, start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Group(column).Order("value DESC").Limit(20).Scan(dest).Error
+	*dest = []LabelValue{}
+	return s.distribution(ctx, "stat_device", "COALESCE(NULLIF("+column+", ''), '未知')", linkID, start, end, dest)
+}
+
+// Query disjoint historical aggregates and today's persisted visits.
+func (s *StatService) distribution(ctx context.Context, table, label string, linkID uint64, start, end time.Time, dest *[]LabelValue) error {
+	today := time.Now().Format("2006-01-02")
+	scope := ""
+	args := []any{start.Format("2006-01-02"), end.Format("2006-01-02"), today}
+	if linkID > 0 {
+		scope = " AND link_id = ?"
+		args = append(args, linkID)
+	}
+	sql := "SELECT " + label + " AS label, SUM(pv) AS value FROM " + table + " WHERE stat_date BETWEEN ? AND ? AND stat_date < ?" + scope + " GROUP BY label"
+	if start.Format("2006-01-02") <= today && end.Format("2006-01-02") >= today {
+		sql += " UNION ALL SELECT " + label + " AS label, COUNT(*) AS value FROM access_logs WHERE visited_at >= ? AND visited_at < ?" + scope + " GROUP BY label"
+		args = append(args, today, time.Now().AddDate(0, 0, 1).Format("2006-01-02"))
+		if linkID > 0 {
+			args = append(args, linkID)
+		}
+	}
+	return s.db.WithContext(ctx).Raw("SELECT label, SUM(value) AS value FROM ("+sql+") AS distribution GROUP BY label ORDER BY value DESC, label ASC", args...).Scan(dest).Error
+}
+
+func (s *StatService) HourlyRange(ctx context.Context, linkID uint64, start, end time.Time) ([]HourlyPoint, error) {
+	today := time.Now().Format("2006-01-02")
+	scope := ""
+	args := []any{start.Format("2006-01-02"), end.Format("2006-01-02"), today}
+	if linkID > 0 {
+		scope = " AND link_id = ?"
+		args = append(args, linkID)
+	}
+	sql := "SELECT stat_hour AS hour, SUM(pv) AS pv FROM stat_hourly WHERE stat_date BETWEEN ? AND ? AND stat_date < ?" + scope + " GROUP BY stat_hour"
+	if start.Format("2006-01-02") <= today && end.Format("2006-01-02") >= today {
+		sql += " UNION ALL SELECT HOUR(visited_at) AS hour, COUNT(*) AS pv FROM access_logs WHERE visited_at >= ? AND visited_at < ?" + scope + " GROUP BY HOUR(visited_at)"
+		args = append(args, today, time.Now().AddDate(0, 0, 1).Format("2006-01-02"))
+		if linkID > 0 {
+			args = append(args, linkID)
+		}
+	}
+	var rows []HourlyPoint
+	err := s.db.WithContext(ctx).Raw("SELECT hour, SUM(pv) AS pv FROM ("+sql+") AS hours GROUP BY hour", args...).Scan(&rows).Error
+	points := make([]HourlyPoint, 24)
+	for h := range points {
+		points[h].Hour = uint8(h)
+	}
+	for _, row := range rows {
+		if row.Hour < 24 {
+			points[row.Hour] = row
+		}
+	}
+	return points, err
 }
 
 func (s *StatService) redisUint(ctx context.Context, key string) uint64 {
@@ -344,29 +392,29 @@ func sameDay(a time.Time, b time.Time) bool {
 
 // VisitorLog 访客记录查询结果。
 type VisitorLog struct {
-	ID        uint64  `json:"id"`
-	LinkID    uint64  `json:"link_id"`
-	LinkCode  string  `json:"link_code"`
-	LinkTitle string  `json:"link_title"`
-	VisitedAt string  `json:"visited_at"`
-	IP        string  `json:"ip"`
-	Country   string  `json:"country"`
-	Province  string  `json:"province"`
-	City      string  `json:"city"`
-	Device    string  `json:"device"`
-	OS        string  `json:"os"`
-	Browser   string  `json:"browser"`
-	Referer   string  `json:"referer"`
-	SourceApp string  `json:"source_app"`
+	ID        uint64    `json:"id"`
+	LinkID    uint64    `json:"link_id"`
+	LinkCode  string    `json:"link_code"`
+	LinkTitle string    `json:"link_title"`
+	VisitedAt time.Time `json:"visited_at"`
+	IP        string    `json:"ip"`
+	Country   string    `json:"country"`
+	Province  string    `json:"province"`
+	City      string    `json:"city"`
+	Device    string    `json:"device"`
+	OS        string    `json:"os"`
+	Browser   string    `json:"browser"`
+	Referer   string    `json:"referer"`
+	SourceApp string    `json:"source_app"`
 }
 
 type VisitorLogQuery struct {
-	LinkID   uint64
-	Start    time.Time
-	End      time.Time
-	Keyword  string
-	Limit    int
-	Offset   int
+	LinkID  uint64
+	Start   time.Time
+	End     time.Time
+	Keyword string
+	Limit   int
+	Offset  int
 }
 
 type VisitorLogResult struct {
@@ -376,12 +424,22 @@ type VisitorLogResult struct {
 
 // ListVisitors 查询访客记录，支持按链接、时间范围、关键词筛选。
 func (s *StatService) ListVisitors(ctx context.Context, q VisitorLogQuery) (VisitorLogResult, error) {
-	var result VisitorLogResult
+	result := VisitorLogResult{Items: []VisitorLog{}}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
 	if q.Limit <= 0 || q.Limit > 200 {
 		q.Limit = 50
 	}
 
-	query := s.db.WithContext(ctx).Table("access_logs").
+	columns := "id, link_id, visited_at, ip, country, province, city, device, os, browser, referer"
+	archiveSource := "'' AS source_app"
+	if s.archiveSourceApp {
+		archiveSource = "source_app"
+	}
+	source := "(SELECT " + columns + ", source_app FROM access_logs UNION ALL SELECT " + columns + ", " + archiveSource + " FROM access_logs_archive) AS access_logs"
+
+	query := s.db.WithContext(ctx).Table(source).
 		Select("access_logs.id, access_logs.link_id, links.code AS link_code, COALESCE(links.title, '') AS link_title, access_logs.visited_at, access_logs.ip, COALESCE(access_logs.country,'') AS country, COALESCE(access_logs.province,'') AS province, COALESCE(access_logs.city,'') AS city, access_logs.device, COALESCE(access_logs.os,'') AS os, COALESCE(access_logs.browser,'') AS browser, COALESCE(access_logs.referer,'') AS referer, COALESCE(access_logs.source_app,'') AS source_app").
 		Joins("LEFT JOIN links ON links.id = access_logs.link_id AND links.deleted_at IS NULL")
 
@@ -392,7 +450,7 @@ func (s *StatService) ListVisitors(ctx context.Context, q VisitorLogQuery) (Visi
 		query = query.Where("access_logs.visited_at >= ?", q.Start)
 	}
 	if !q.End.IsZero() {
-		query = query.Where("access_logs.visited_at <= ?", q.End)
+		query = query.Where("access_logs.visited_at < ?", q.End)
 	}
 	if q.Keyword != "" {
 		kw := "%" + q.Keyword + "%"
@@ -403,7 +461,7 @@ func (s *StatService) ListVisitors(ctx context.Context, q VisitorLogQuery) (Visi
 		return result, err
 	}
 
-	err := query.Order("access_logs.visited_at DESC").
+	err := query.Order("access_logs.visited_at DESC, access_logs.id DESC").
 		Limit(q.Limit).Offset(q.Offset).
 		Scan(&result.Items).Error
 	return result, err

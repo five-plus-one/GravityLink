@@ -39,8 +39,12 @@ func (a *LogArchiver) Start(ctx context.Context) {
 
 func (a *LogArchiver) Archive(ctx context.Context, before time.Time) error {
 	cutoff := before.Format("2006-01-02 15:04:05")
+	columns := "id, link_id, visited_at, ip, country, province, city, isp, device, os, browser, referer, via_transit, created_at"
+	if a.db.Migrator().HasColumn("access_logs_archive", "source_app") {
+		columns += ", source_app"
+	}
 	return a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("INSERT INTO access_logs_archive SELECT * FROM access_logs WHERE visited_at < ?", cutoff).Error; err != nil {
+		if err := tx.Exec("INSERT INTO access_logs_archive ("+columns+") SELECT "+columns+" FROM access_logs WHERE visited_at < ?", cutoff).Error; err != nil {
 			return err
 		}
 		return tx.Exec("DELETE FROM access_logs WHERE visited_at < ?", cutoff).Error
