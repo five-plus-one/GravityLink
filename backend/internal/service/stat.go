@@ -47,6 +47,19 @@ type DeviceStats struct {
 	Browser []LabelValue `json:"browser"`
 }
 
+// GeoStats 国家与中国省份两个维度，供世界地图 / 中国地图与排行使用。
+type GeoStats struct {
+	Country  []LabelValue `json:"country"`
+	Province []LabelValue `json:"province"`
+	City     []LabelValue `json:"city"`
+}
+
+// SourceStats 访问来源维度：识别出的 APP 与 Referer 域名。
+type SourceStats struct {
+	App     []LabelValue `json:"app"`
+	Referer []LabelValue `json:"referer"`
+}
+
 func NewStatService(db *gorm.DB, redis *redis.Client) *StatService {
 	return &StatService{db: db, redis: redis, archiveSourceApp: db.Migrator().HasColumn("access_logs_archive", "source_app")}
 }
@@ -261,10 +274,16 @@ func (s *StatService) Hourly(ctx context.Context, linkID uint64, date time.Time)
 	return points, nil
 }
 
-func (s *StatService) Geo(ctx context.Context, linkID uint64, start, end time.Time) ([]LabelValue, error) {
-	rows := []LabelValue{}
-	err := s.distribution(ctx, "stat_geo", "COALESCE(NULLIF(province, ''), NULLIF(country, ''), '未知')", linkID, start, end, &rows)
-	return rows, err
+func (s *StatService) Geo(ctx context.Context, linkID uint64, start, end time.Time) (GeoStats, error) {
+	result := GeoStats{Country: []LabelValue{}, Province: []LabelValue{}}
+	if err := s.distribution(ctx, "stat_geo", "COALESCE(NULLIF(country, ''), '未知')", linkID, start, end, &result.Country); err != nil {
+		return result, err
+	}
+	// 省份仅统计国内访问，避免把 California / Bavaria 等境外行政区混进中国地图
+	if err := s.distributionWhere(ctx, "stat_geo", "province", "country = '中国' AND province <> ''", linkID, start, end, &result.Province); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func (s *StatService) Device(ctx context.Context, linkID uint64, start, end time.Time) (DeviceStats, error) {
@@ -288,16 +307,26 @@ func (s *StatService) aggregateLabel(ctx context.Context, column string, linkID 
 
 // Query disjoint historical aggregates and today's persisted visits.
 func (s *StatService) distribution(ctx context.Context, table, label string, linkID uint64, start, end time.Time, dest *[]LabelValue) error {
+	return s.distributionWhere(ctx, table, label, "", linkID, start, end, dest)
+}
+
+// distributionWhere 在 distribution 基础上追加固定 WHERE 片段（历史表与今日明细均生效）。
+func (s *StatService) distributionWhere(ctx context.Context, table, label, extraWhere string, linkID uint64, start, end time.Time, dest *[]LabelValue) error {
+	*dest = []LabelValue{}
 	today := time.Now().Format("2006-01-02")
+	extra := ""
+	if extraWhere != "" {
+		extra = " AND (" + extraWhere + ")"
+	}
 	scope := ""
 	args := []any{start.Format("2006-01-02"), end.Format("2006-01-02"), today}
 	if linkID > 0 {
 		scope = " AND link_id = ?"
 		args = append(args, linkID)
 	}
-	sql := "SELECT " + label + " AS label, SUM(pv) AS value FROM " + table + " WHERE stat_date BETWEEN ? AND ? AND stat_date < ?" + scope + " GROUP BY label"
+	sql := "SELECT " + label + " AS label, SUM(pv) AS value FROM " + table + " WHERE stat_date BETWEEN ? AND ? AND stat_date < ?" + scope + extra + " GROUP BY label"
 	if start.Format("2006-01-02") <= today && end.Format("2006-01-02") >= today {
-		sql += " UNION ALL SELECT " + label + " AS label, COUNT(*) AS value FROM access_logs WHERE visited_at >= ? AND visited_at < ?" + scope + " GROUP BY label"
+		sql += " UNION ALL SELECT " + label + " AS label, COUNT(*) AS value FROM access_logs WHERE visited_at >= ? AND visited_at < ?" + scope + extra + " GROUP BY label"
 		args = append(args, today, time.Now().AddDate(0, 0, 1).Format("2006-01-02"))
 		if linkID > 0 {
 			args = append(args, linkID)

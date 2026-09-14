@@ -138,6 +138,17 @@ export interface DeviceStats {
   browser: LabelValue[];
 }
 
+export interface GeoStats {
+  country: LabelValue[];
+  province: LabelValue[];
+  city: LabelValue[];
+}
+
+export interface SourceStats {
+  app: LabelValue[];
+  referer: LabelValue[];
+}
+
 export interface AuthConfigStatus {
   issuer: string;
   client_id: string;
@@ -252,8 +263,8 @@ export async function getHourlyStats(linkId: number, query = ''): Promise<Hourly
   return request<HourlyPoint[]>(`/api/v1/stats/${linkId}/hourly${query}`);
 }
 
-export async function getGeoStats(linkId: number, query = ''): Promise<LabelValue[]> {
-  return request<LabelValue[]>(`/api/v1/stats/${linkId}/geo${query}`);
+export async function getGeoStats(linkId: number, query = ''): Promise<GeoStats> {
+  return request<GeoStats>(`/api/v1/stats/${linkId}/geo${query}`);
 }
 
 export async function getDeviceStats(linkId: number, query = ''): Promise<DeviceStats> {

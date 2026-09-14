@@ -113,10 +113,21 @@ GET /api/v1/stats/{link_id}/hourly?date=2026-07-02
 
 ### 地域分布
 
+按国家、中国省份两个维度分别聚合（不再把省份与国家混在一条 label 里）：
+
 ```
 GET /api/v1/stats/{link_id}/geo?start=&end=
-响应：[{province, pv, percentage}, ...]，按 PV 降序，TOP 20
+GET /api/v1/stats/window?...   # window 响应内 geo 字段同结构
+响应：
+{
+  "country":  [{"label": "中国", "value": 481}, {"label": "United States", "value": 158}, ...],
+  "province": [{"label": "江苏省", "value": 108}, ...]
+}
 ```
+
+- `country`：按 `country` 列聚合，空值归为「未知」，用于世界地图着色与排行
+- `province`：仅统计 `country = '中国'` 且 `province` 非空的记录，用于中国地图着色与排行
+- 前端将国名/省名映射到 ECharts map GeoJSON 的 `name` 字段；「未知」与内网保留地址不上图
 
 ### 设备分布
 
@@ -137,7 +148,7 @@ GET /api/v1/stats/{link_id}/device?start=&end=
 - 顶部卡片：总 PV、总 UV、今日 PV、今日 UV
 - 折线图：近 30 天 PV/UV 趋势（双轴）
 - 条形图：24 小时分布
-- 地图/表格：省份 TOP 10
+- 地域分布：世界地图 + 中国地图切换，右侧 TOP10 来源排行（2026-09-14 替换原饼图）
 - 饼图：设备类型 / OS 分布
 
 ### 全局看板（管理员）
@@ -186,4 +197,25 @@ GORM 聚合模型必须显式映射现有 stat_daily、stat_hourly、stat_device
 
 ## 精确时段与最近24小时
 
-GET /api/v1/stats/window 接收带时区的 start/end 和可选 link_id，按左闭右开区间查询近期及归档访问明细，返回 PV、去重 IP 的 UV、每日趋势及设备、浏览器、地域分布。范围最多90天。小时接口不传日期时返回截至请求时刻的连续24个一小时时段，每点包含 start/end；传日期时保持历史兼容。
+GET /api/v1/stats/window 接收带时区的 start/end 和可选 link_id，按左闭右开区间查询近期及归档访问明细，返回：
+
+- `pv` / `uv`：区间访问量与去重 IP
+- `daily`：按日 PV/UV（区间内补齐空日为 0）
+- `device`：设备 / 操作系统 / 浏览器
+- `geo`：`country` / `province`（仅中国）/ `city`（仅中国，TOP）
+- `source`：`app`（来源 APP，空归为「直接访问」）/ `referer`（域名 TOP）
+
+范围最多 90 天。
+
+### 管理端统计页信息架构（2026-09-14）
+
+顶部保留链接选择与日期范围，下方选项卡分区：
+
+| Tab | 内容 |
+|-----|------|
+| 趋势 | 区间 KPI、每日 PV/UV、最近 24 小时 |
+| 设备 | 设备类型饼图、OS / 浏览器条形图 |
+| 地域 | 世界/中国大地图 + 国家/省份/城市排行（含占比） |
+| 来源 | 来源应用、Referer 域名 TOP |
+
+地图资源本地化：`frontend/admin/public/maps/{world,china}.json`，国名/省名映射见 `geoNames.ts`。
