@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-// 统一由 echarts.ts 注册图表组件（含饼图），模块加载即完成注册
+// 统一由 echarts.ts 注册图表组件（含饼图/地图），模块加载即完成注册
 import '../echarts';
 import VChart from 'vue-echarts';
 import { RefreshCw, RotateCcw } from '@lucide/vue';
-import { NAlert, NButton, NCard, NDatePicker, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, useMessage } from 'naive-ui';
+import { NAlert, NButton, NCard, NEmpty, NGrid, NGridItem, NPopconfirm, NSelect, NSkeleton, NStatistic, NTabPane, NTabs, useMessage } from 'naive-ui';
 import {
   request,
   getDailyStats,
   getDeviceStats,
-  getGeoStats,
   getHourlyStats,
   getOverviewDaily,
   getOverviewHourly,
@@ -20,15 +19,18 @@ import {
   resetLinkStats,
   type DailyPoint,
   type DeviceStats,
+  type GeoStats,
   type HourlyPoint,
   type LabelValue,
   type LinkItem,
+  type SourceStats,
   type SummaryStats,
 } from '../api';
 import { useAuthStore } from '../stores/auth';
 
 import {presetRange,hourLabel} from '../timeRange';
 import ResponsiveDateRange from '../components/ResponsiveDateRange.vue';
+import GeoMap from '../components/GeoMap.vue';
 
 const message = useMessage();
 const route = useRoute();
@@ -43,7 +45,9 @@ const summary = ref<SummaryStats | null>(null);
 const daily = ref<DailyPoint[]>([]);
 const hourly = ref<HourlyPoint[]>([]);
 const deviceStats = ref<DeviceStats | null>(null);
-const geo = ref<LabelValue[]>([]);
+const geo = ref<GeoStats>({ country: [], province: [], city: [] });
+const source = ref<SourceStats>({ app: [], referer: [] });
+const activeTab = ref('overview');
 
 const deviceLabels: Record<string, string> = {
   mobile: '手机',
@@ -142,9 +146,9 @@ function pieOption(items: LabelValue[]) {
   };
 }
 
-function horizontalBarOption(items: LabelValue[], color: string) {
+function horizontalBarOption(items: LabelValue[], color: string, labeler?: (v: string) => string) {
   return {
-    grid: { left: 90, right: 40, top: 10, bottom: 30 },
+    grid: { left: 100, right: 40, top: 10, bottom: 30 },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     xAxis: {
       type: 'value',
@@ -153,9 +157,9 @@ function horizontalBarOption(items: LabelValue[], color: string) {
     },
     yAxis: {
       type: 'category',
-      data: items.map((item) => labelOf(item.label)),
+      data: items.map((item) => (labeler ? labeler(item.label) : labelOf(item.label))),
       axisLine: { lineStyle: { color: '#c2cdd2' } },
-      axisLabel: { color: '#48565e' },
+      axisLabel: { color: '#48565e', width: 90, overflow: 'truncate' },
     },
     series: [
       {
@@ -171,7 +175,14 @@ function horizontalBarOption(items: LabelValue[], color: string) {
 const deviceOption = computed(() => pieOption(deviceStats.value?.device ?? []));
 const osOption = computed(() => horizontalBarOption(deviceStats.value?.os ?? [], '#1d4ed8'));
 const browserOption = computed(() => horizontalBarOption(deviceStats.value?.browser ?? [], '#0f766e'));
-const geoOption = computed(() => pieOption(geo.value));
+const sourceAppOption = computed(() => horizontalBarOption(source.value.app ?? [], '#c2410c'));
+const refererOption = computed(() =>
+  horizontalBarOption((source.value.referer ?? []).slice(0, 12), '#0369a1'),
+);
+
+const sourceHasData = computed(
+  () => (source.value.app?.length ?? 0) > 0 || (source.value.referer?.length ?? 0) > 0,
+);
 
 onMounted(async () => {
   try {
@@ -212,17 +223,20 @@ async function load() {
   const current = ++loadId;
   loading.value = true;
   loadError.value = '';
-  deviceStats.value = null; geo.value = []; daily.value = []; hourly.value = [];
+  deviceStats.value = null; geo.value = { country: [], province: [], city: [] }; source.value = { app: [], referer: [] }; daily.value = []; hourly.value = [];
   try {
     const r=dateRange.value||presetRange('30d');
     const params=new URLSearchParams({link_id:String(id),start:new Date(r[0]).toISOString(),end:new Date(r[1]).toISOString()});
     const [s,w,h]=await Promise.all([
       id===0?getOverviewSummary():getSummaryStats(id),
-      request<{pv:number;uv:number;daily:DailyPoint[];device:DeviceStats;geo:LabelValue[]}>(`/api/v1/stats/window?${params}`),
+      request<{pv:number;uv:number;daily:DailyPoint[];device:DeviceStats;geo:GeoStats;source:SourceStats}>(`/api/v1/stats/window?${params}`),
       id===0?getOverviewHourly():getHourlyStats(id),
     ]);
     if(current!==loadId)return;
-    summary.value=s;periodPV.value=w.pv;periodUV.value=w.uv;daily.value=w.daily;deviceStats.value=w.device;geo.value=w.geo;hourly.value=h;
+    summary.value=s;periodPV.value=w.pv;periodUV.value=w.uv;daily.value=w.daily;deviceStats.value=w.device;
+    geo.value={country:w.geo?.country??[],province:w.geo?.province??[],city:w.geo?.city??[]};
+    source.value={app:w.source?.app??[],referer:w.source?.referer??[]};
+    hourly.value=h;
   } catch (err) {
     if (current !== loadId) return;
     loadError.value = err instanceof Error ? err.message : '加载统计失败';
@@ -255,7 +269,7 @@ async function doReset() {
         <div class="card-head">
           <div>
             <strong>访问统计</strong>
-            <p class="muted">按链接查看访问量与时段分布</p>
+            <p class="muted">按链接查看访问趋势、设备、地域与来源</p>
           </div>
           <div class="card-actions">
             <NSelect
@@ -283,6 +297,7 @@ async function doReset() {
       </template>
 
       <NAlert v-if="loadError" type="error">{{ loadError }}</NAlert>
+
       <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-bottom: var(--space-5)">
         <NGridItem span="4 s:2 m:1">
           <NCard size="small" embedded>
@@ -310,54 +325,93 @@ async function doReset() {
         </NGridItem>
       </NGrid>
 
-      <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
-        <NGridItem span="2 m:1">
-          <NCard :title="'所选时段每日访问'" size="small" embedded>
-            <VChart :option="dailyOption" autoresize style="height: 320px" />
-          </NCard>
-        </NGridItem>
-        <NGridItem span="2 m:1">
-          <NCard :title="'最近24小时'" size="small" embedded>
-            <VChart :option="hourlyOption" autoresize style="height: 320px" />
-          </NCard>
-        </NGridItem>
-        <NGridItem span="2 m:1">
-          <NCard title="设备分布" size="small" embedded>
-            <NEmpty
-              v-if="(deviceStats?.device?.length ?? 0) === 0"
-              :description="loading ? '正在加载' : '所选日期暂无访问'"
-              style="padding: 60px 0"
+      <NTabs v-model:value="activeTab" type="line" animated>
+        <NTabPane name="overview" tab="趋势">
+          <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
+            <NGridItem span="2 m:1">
+              <NCard title="所选时段每日访问" size="small" embedded>
+                <VChart :option="dailyOption" autoresize style="height: 340px" />
+              </NCard>
+            </NGridItem>
+            <NGridItem span="2 m:1">
+              <NCard title="最近24小时" size="small" embedded>
+                <VChart :option="hourlyOption" autoresize style="height: 340px" />
+              </NCard>
+            </NGridItem>
+          </NGrid>
+        </NTabPane>
+
+        <NTabPane name="device" tab="设备">
+          <NGrid :cols="3" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
+            <NGridItem span="3 m:1">
+              <NCard title="设备分布" size="small" embedded>
+                <NEmpty
+                  v-if="(deviceStats?.device?.length ?? 0) === 0"
+                  :description="loading ? '正在加载' : '所选日期暂无访问'"
+                  style="padding: 60px 0"
+                />
+                <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
+              </NCard>
+            </NGridItem>
+            <NGridItem span="3 m:1">
+              <NCard title="操作系统" size="small" embedded>
+                <NEmpty
+                  v-if="(deviceStats?.os?.length ?? 0) === 0"
+                  :description="loading ? '正在加载' : '所选日期暂无访问'"
+                  style="padding: 60px 0"
+                />
+                <VChart v-else :option="osOption" autoresize style="height: 320px" />
+              </NCard>
+            </NGridItem>
+            <NGridItem span="3 m:1">
+              <NCard title="浏览器" size="small" embedded>
+                <NEmpty
+                  v-if="(deviceStats?.browser?.length ?? 0) === 0"
+                  :description="loading ? '正在加载' : '所选日期暂无访问'"
+                  style="padding: 60px 0"
+                />
+                <VChart v-else :option="browserOption" autoresize style="height: 320px" />
+              </NCard>
+            </NGridItem>
+          </NGrid>
+        </NTabPane>
+
+        <NTabPane name="geo" tab="地域">
+          <NCard size="small" embedded>
+            <GeoMap
+              :country="geo.country ?? []"
+              :province="geo.province ?? []"
+              :city="geo.city ?? []"
+              :loading="loading"
             />
-            <VChart v-else :option="deviceOption" autoresize style="height: 320px" />
           </NCard>
-        </NGridItem>
-        <NGridItem span="2 m:1">
-          <NCard title="操作系统" size="small" embedded>
-            <NEmpty
-              v-if="(deviceStats?.os?.length ?? 0) === 0"
-              :description="loading ? '正在加载' : '所选日期暂无访问'"
-              style="padding: 60px 0"
-            />
-            <VChart v-else :option="osOption" autoresize style="height: 320px" />
-          </NCard>
-        </NGridItem>
-        <NGridItem span="2 m:1">
-          <NCard title="浏览器" size="small" embedded>
-            <NEmpty
-              v-if="(deviceStats?.browser?.length ?? 0) === 0"
-              :description="loading ? '正在加载' : '所选日期暂无访问'"
-              style="padding: 60px 0"
-            />
-            <VChart v-else :option="browserOption" autoresize style="height: 320px" />
-          </NCard>
-        </NGridItem>
-        <NGridItem span="2 m:1">
-          <NCard title="地域分布" size="small" embedded>
-            <NEmpty v-if="geo.length === 0" description="暂无数据" style="padding: 60px 0" />
-            <VChart v-else :option="geoOption" autoresize style="height: 320px" />
-          </NCard>
-        </NGridItem>
-      </NGrid>
+        </NTabPane>
+
+        <NTabPane name="source" tab="来源">
+          <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
+            <NGridItem span="2 m:1">
+              <NCard title="来源应用" size="small" embedded>
+                <NEmpty
+                  v-if="!sourceHasData && !loading"
+                  description="所选日期暂无来源数据"
+                  style="padding: 60px 0"
+                />
+                <VChart v-else :option="sourceAppOption" autoresize style="height: 340px" />
+              </NCard>
+            </NGridItem>
+            <NGridItem span="2 m:1">
+              <NCard title="Referer 域名 TOP" size="small" embedded>
+                <NEmpty
+                  v-if="!sourceHasData && !loading"
+                  description="所选日期暂无来源数据"
+                  style="padding: 60px 0"
+                />
+                <VChart v-else :option="refererOption" autoresize style="height: 340px" />
+              </NCard>
+            </NGridItem>
+          </NGrid>
+        </NTabPane>
+      </NTabs>
     </NCard>
   </div>
 </template>
