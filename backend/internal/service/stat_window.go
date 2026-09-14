@@ -11,25 +11,36 @@ type WindowStats struct {
 	UV     uint64       `json:"uv"`
 	Daily  []DailyPoint `json:"daily"`
 	Device DeviceStats  `json:"device"`
-	Geo    []LabelValue `json:"geo"`
+	Geo    GeoStats     `json:"geo"`
+	Source SourceStats  `json:"source"`
 }
 
 func (s *StatService) windowLogs(ctx context.Context, linkID uint64, start, end time.Time) *gorm.DB {
-	columns := "link_id,visited_at,ip,device,os,browser,province,country"
+	base := "link_id,visited_at,ip,device,os,browser,province,country,city,referer"
+	liveCols := base + ",source_app"
+	archiveCols := liveCols
+	if !s.archiveSourceApp {
+		archiveCols = base + ",'' AS source_app"
+	}
 	scope := ""
 	args := []interface{}{start, end}
 	if linkID > 0 {
 		scope = " AND link_id = ?"
 		args = append(args, linkID)
 	}
-	query := "SELECT " + columns + " FROM access_logs WHERE visited_at>=? AND visited_at<?" + scope
-	query += " UNION ALL SELECT " + columns + " FROM access_logs_archive WHERE visited_at>=? AND visited_at<?" + scope
+	query := "SELECT " + liveCols + " FROM access_logs WHERE visited_at>=? AND visited_at<?" + scope
+	query += " UNION ALL SELECT " + archiveCols + " FROM access_logs_archive WHERE visited_at>=? AND visited_at<?" + scope
 	args = append(args, args...)
 	return s.db.WithContext(ctx).Table("("+query+") AS visits", args...)
 }
 
 func (s *StatService) Window(ctx context.Context, linkID uint64, start, end time.Time) (WindowStats, error) {
-	result := WindowStats{Daily: []DailyPoint{}, Geo: []LabelValue{}, Device: DeviceStats{Device: []LabelValue{}, OS: []LabelValue{}, Browser: []LabelValue{}}}
+	result := WindowStats{
+		Daily:  []DailyPoint{},
+		Geo:    GeoStats{Country: []LabelValue{}, Province: []LabelValue{}, City: []LabelValue{}},
+		Device: DeviceStats{Device: []LabelValue{}, OS: []LabelValue{}, Browser: []LabelValue{}},
+		Source: SourceStats{App: []LabelValue{}, Referer: []LabelValue{}},
+	}
 	var counts struct {
 		PV uint64
 		UV uint64
@@ -56,10 +67,39 @@ func (s *StatService) Window(ctx context.Context, linkID uint64, start, end time
 	for _, dim := range []struct {
 		expr string
 		dest *[]LabelValue
-	}{{"COALESCE(NULLIF(device,''),'unknown')", &result.Device.Device}, {"COALESCE(NULLIF(os,''),'未知')", &result.Device.OS}, {"COALESCE(NULLIF(browser,''),'未知')", &result.Device.Browser}, {"COALESCE(NULLIF(province,''),NULLIF(country,''),'未知')", &result.Geo}} {
+	}{{"COALESCE(NULLIF(device,''),'unknown')", &result.Device.Device}, {"COALESCE(NULLIF(os,''),'未知')", &result.Device.OS}, {"COALESCE(NULLIF(browser,''),'未知')", &result.Device.Browser}, {"COALESCE(NULLIF(country,''),'未知')", &result.Geo.Country}} {
 		if err := s.windowLogs(ctx, linkID, start, end).Select(dim.expr + " AS label,COUNT(*) AS value").Group("label").Order("value DESC,label").Scan(dim.dest).Error; err != nil {
 			return result, err
 		}
+	}
+	if err := s.windowLogs(ctx, linkID, start, end).
+		Where("country = '中国' AND province <> ''").
+		Select("province AS label,COUNT(*) AS value").
+		Group("label").Order("value DESC,label").
+		Scan(&result.Geo.Province).Error; err != nil {
+		return result, err
+	}
+	// 国内城市 TOP（有城市名时）
+	if err := s.windowLogs(ctx, linkID, start, end).
+		Where("country = '中国' AND city <> ''").
+		Select("city AS label,COUNT(*) AS value").
+		Group("label").Order("value DESC,label").Limit(20).
+		Scan(&result.Geo.City).Error; err != nil {
+		return result, err
+	}
+	// 来源 APP（微信/抖音等，由 UA+Referer 解析）
+	if err := s.windowLogs(ctx, linkID, start, end).
+		Select("COALESCE(NULLIF(source_app,''),'直接访问') AS label,COUNT(*) AS value").
+		Group("label").Order("value DESC,label").
+		Scan(&result.Source.App).Error; err != nil {
+		return result, err
+	}
+	// Referer 域名（空视为直接访问）
+	if err := s.windowLogs(ctx, linkID, start, end).
+		Select(`COALESCE(NULLIF(SUBSTRING_INDEX(SUBSTRING_INDEX(referer, '://', -1), '/', 1), ''), '直接访问') AS label, COUNT(*) AS value`).
+		Group("label").Order("value DESC,label").Limit(20).
+		Scan(&result.Source.Referer).Error; err != nil {
+		return result, err
 	}
 	return result, nil
 }
