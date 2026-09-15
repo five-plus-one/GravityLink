@@ -126,6 +126,10 @@ export function setupAuthConfig(payload: SetupPayload, result: LogtoCheckResult)
     logout_endpoint: '',
     redirect_uri: result.redirect_uri,
     allowed_roles: payload.auth.allowed_roles,
+    brand_name: 'GravityLink',
+    brand_logo: '',
+    auth_label: 'Logto',
+    auth_logo: '',
   };
 }
 

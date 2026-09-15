@@ -16,7 +16,9 @@ func registerConfigRoutes(group *gin.RouterGroup, configs *service.SystemConfigS
 			response.Error(c, http.StatusInternalServerError, 5000, "list configs failed")
 			return
 		}
-		response.OK(c, gin.H{"configs": items, "auth": authConfig(deps.Config, c.Request)})
+		payload := authConfig(deps.Config, c.Request)
+		applyBrandConfigs(c.Request.Context(), deps.DB, &payload)
+		response.OK(c, gin.H{"configs": items, "auth": payload})
 	})
 
 	group.PUT("/configs", func(c *gin.Context) {
@@ -30,6 +32,8 @@ func registerConfigRoutes(group *gin.RouterGroup, configs *service.SystemConfigS
 			response.Error(c, http.StatusInternalServerError, 5000, "update configs failed")
 			return
 		}
-		response.OK(c, gin.H{"configs": items, "auth": authConfig(deps.Config, c.Request)})
+		payload := authConfig(deps.Config, c.Request)
+		applyBrandConfigs(c.Request.Context(), deps.DB, &payload)
+		response.OK(c, gin.H{"configs": items, "auth": payload})
 	})
 }

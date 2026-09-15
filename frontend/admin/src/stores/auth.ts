@@ -26,6 +26,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function loadConfig(): Promise<AuthConfig> {
     if (config.value) return config.value;
     config.value = await loadAuthConfig();
+    if (config.value?.brand_name) {
+      localStorage.setItem('gravitylink_brand_name', config.value.brand_name);
+    }
     return config.value;
   }
 

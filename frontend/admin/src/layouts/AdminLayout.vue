@@ -63,9 +63,12 @@ const activeKey = computed(() => (route.name as string) || 'dashboard');
 const pageTitle = computed(() => (route.meta.title as string) || '');
 const pageSubtitle = computed(() => (route.meta.subtitle as string) || '集中管理链接、域名与访问数据');
 const publicEntryUrl = ref('');
+const brandName = computed(() => auth.config?.brand_name || 'GravityLink');
+const brandLogo = computed(() => auth.config?.brand_logo || '');
 
 onMounted(async () => {
   try {
+    await auth.loadConfig();
     const { request } = await import('../api');
     const data = await request<{ configs: Record<string, string> }>('/api/admin/configs');
     publicEntryUrl.value = data.configs?.['public.base_url'] || '';
@@ -168,8 +171,9 @@ function handleMenuSelect(key: string) {
       </main>
       <footer class="admin-footer">
         <a href="https://r-l.ink/glink" target="_blank" rel="noopener noreferrer" class="footer-link">
-          <BrandMark class="brand-icon footer-mark" />
-          <span>GravityLink</span>
+          <BrandMark v-if="!brandLogo" class="brand-icon footer-mark" />
+          <img v-else :src="brandLogo" class="footer-logo" alt="" />
+          <span>{{ brandName }}</span>
         </a>
       </footer>
     </NLayout>
@@ -439,6 +443,7 @@ function handleMenuSelect(key: string) {
 }
 .brand-icon { width:32px;height:32px;color:var(--color-primary);flex-shrink:0 }
 .brand-icon.footer-mark{width:12px;height:12px}
+.footer-logo{width:12px;height:12px;object-fit:contain;flex-shrink:0}
 .admin-sider.is-collapsed :deep(.sider-menu){padding:8px 0}
 .admin-sider.is-collapsed .sider-footer{padding:12px 0}
 .admin-sider.is-collapsed .sider-user{padding:0;justify-content:center}

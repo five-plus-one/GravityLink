@@ -118,43 +118,79 @@ func (s *StatService) SummaryAll(ctx context.Context) (SummaryStats, error) {
 	s.db.WithContext(ctx).Table("access_logs").Where("visited_at >= ?", today).Distinct("ip").Count(&todayIP)
 	result.TodayUV = uint64(todayIP)
 
-	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	_ = s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0)").Where("stat_date = ?", yesterday).Scan(&result.YesterdayPV).Error
+	yesterday := time.Now().AddDate(0, 0, -1)
+	yesterdayStart := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, time.Local)
+	todayStart := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Local)
+	// 昨日优先从 access_logs 统计，与趋势图/访客明细同源；聚合表仅作无日志时的兜底
+	var yesterdayPV int64
+	s.db.WithContext(ctx).Table("access_logs").Where("visited_at >= ? AND visited_at < ?", yesterdayStart, todayStart).Count(&yesterdayPV)
+	if yesterdayPV == 0 {
+		_ = s.db.WithContext(ctx).Table("stat_daily").Select("COALESCE(SUM(pv),0)").Where("stat_date = ?", yesterdayStart.Format("2006-01-02")).Scan(&result.YesterdayPV).Error
+	} else {
+		result.YesterdayPV = uint64(yesterdayPV)
+	}
 	result.TotalPV += result.TodayPV
 	result.TotalUV += result.TodayUV
 	return result, nil
 }
 
 // DailyAll 返回全部链接的按天聚合统计。
+// 近 90 天以 access_logs（含归档）为准，避免 StatFlusher 未落盘导致历史天显示为 0；
+// 日志覆盖不到的更早日期仍读 stat_daily。
 func (s *StatService) DailyAll(ctx context.Context, start, end time.Time) ([]DailyPoint, error) {
-	var rows []struct {
+	return s.dailyFromLogs(ctx, 0, start, end)
+}
+
+// dailyFromLogs 按日聚合：优先 access_logs，缺失日回退 stat_daily，并补齐区间空日。
+func (s *StatService) dailyFromLogs(ctx context.Context, linkID uint64, start, end time.Time) ([]DailyPoint, error) {
+	var logRows []struct {
+		Date string
+		PV   uint64
+		UV   uint64
+	}
+	q := s.windowLogs(ctx, linkID, start, end).
+		Select("DATE_FORMAT(visited_at,'%Y-%m-%d') AS date, COUNT(*) AS pv, COUNT(DISTINCT ip) AS uv").
+		Group("date")
+	if err := q.Scan(&logRows).Error; err != nil {
+		return nil, err
+	}
+	logByDate := make(map[string]DailyPoint, len(logRows))
+	for _, row := range logRows {
+		logByDate[row.Date] = DailyPoint{Date: row.Date, PV: row.PV, UV: row.UV}
+	}
+
+	var aggRows []struct {
 		StatDate time.Time
 		PV       uint64
 		UV       uint64
 	}
-	if err := s.db.WithContext(ctx).Table("stat_daily").
-		Select("stat_date, SUM(pv) AS pv, SUM(uv) AS uv").
-		Where("stat_date BETWEEN ? AND ?", start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Where("stat_date < ?", time.Now().Format("2006-01-02")).Group("stat_date").
-		Where("stat_date < ?", time.Now().Format("2006-01-02")).Order("stat_date ASC").
-		Scan(&rows).Error; err != nil {
+	aggQuery := s.db.WithContext(ctx).Table("stat_daily").
+		Select("stat_date, SUM(pv) AS pv, COALESCE(SUM(uv),0) AS uv").
+		Where("stat_date BETWEEN ? AND ?", start.Format("2006-01-02"), end.Format("2006-01-02"))
+	if linkID > 0 {
+		aggQuery = aggQuery.Where("link_id = ?", linkID)
+	}
+	if err := aggQuery.Group("stat_date").Scan(&aggRows).Error; err != nil {
 		return nil, err
 	}
-	points := make([]DailyPoint, 0, len(rows)+1)
-	for _, row := range rows {
-		points = append(points, DailyPoint{Date: row.StatDate.Format("2006-01-02"), PV: row.PV, UV: row.UV})
+	aggByDate := make(map[string]DailyPoint, len(aggRows))
+	for _, row := range aggRows {
+		key := row.StatDate.Format("2006-01-02")
+		aggByDate[key] = DailyPoint{Date: key, PV: row.PV, UV: row.UV}
 	}
-	if sameDay(end, time.Now()) {
-		today := time.Now().Format("2006-01-02")
-		var todayPV int64
-		s.db.WithContext(ctx).Table("access_logs").Where("visited_at >= ?", today).Count(&todayPV)
-		var todayIP int64
-		s.db.WithContext(ctx).Table("access_logs").Where("visited_at >= ?", today).Distinct("ip").Count(&todayIP)
-		points = append(points, DailyPoint{
-			Date: time.Now().Format("2006-01-02"),
-			PV:   uint64(todayPV),
-			UV:   uint64(todayIP),
-		})
+
+	begin := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	last := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, end.Location())
+	points := make([]DailyPoint, 0, int(last.Sub(begin).Hours()/24)+1)
+	for d := begin; !d.After(last); d = d.AddDate(0, 0, 1) {
+		key := d.Format("2006-01-02")
+		if p, ok := logByDate[key]; ok {
+			points = append(points, p)
+			continue
+		}
+		p := aggByDate[key]
+		p.Date = key
+		points = append(points, p)
 	}
 	return points, nil
 }
@@ -203,35 +239,7 @@ func (s *StatService) HourlyAll(ctx context.Context, date time.Time) ([]HourlyPo
 }
 
 func (s *StatService) Daily(ctx context.Context, linkID uint64, start, end time.Time) ([]DailyPoint, error) {
-	var rows []struct {
-		StatDate time.Time
-		PV       uint64
-		UV       uint64
-	}
-	if err := s.db.WithContext(ctx).Table("stat_daily").
-		Select("stat_date, pv, uv").
-		Where("link_id = ? AND stat_date BETWEEN ? AND ?", linkID, start.Format("2006-01-02"), end.Format("2006-01-02")).
-		Where("stat_date < ?", time.Now().Format("2006-01-02")).Order("stat_date ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	points := make([]DailyPoint, 0, len(rows)+1)
-	for _, row := range rows {
-		points = append(points, DailyPoint{Date: row.StatDate.Format("2006-01-02"), PV: row.PV, UV: row.UV})
-	}
-	if sameDay(end, time.Now()) {
-		today := time.Now().Format("2006-01-02")
-		var todayPV int64
-		s.db.WithContext(ctx).Table("access_logs").Where("link_id = ? AND visited_at >= ?", linkID, today).Count(&todayPV)
-		var todayIP int64
-		s.db.WithContext(ctx).Table("access_logs").Where("link_id = ? AND visited_at >= ?", linkID, today).Distinct("ip").Count(&todayIP)
-		points = append(points, DailyPoint{
-			Date: time.Now().Format("2006-01-02"),
-			PV:   uint64(todayPV),
-			UV:   uint64(todayIP),
-		})
-	}
-	return points, nil
+	return s.dailyFromLogs(ctx, linkID, start, end)
 }
 
 func (s *StatService) Hourly(ctx context.Context, linkID uint64, date time.Time) ([]HourlyPoint, error) {
