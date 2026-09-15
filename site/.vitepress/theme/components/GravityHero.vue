@@ -28,18 +28,19 @@ function isDark() {
 }
 
 function drawField(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, mx: number, my: number, reduced: boolean, dark: boolean) {
+  // match page background so mask fade blends cleanly
   if (dark) {
     const bg = ctx.createLinearGradient(0, 0, 0, h)
-    bg.addColorStop(0, '#0a1222')
-    bg.addColorStop(0.55, '#070b14')
-    bg.addColorStop(1, '#0b1528')
+    bg.addColorStop(0, '#0b1220')
+    bg.addColorStop(0.45, '#070b14')
+    bg.addColorStop(1, '#0b1220')
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
   } else {
     const bg = ctx.createLinearGradient(0, 0, 0, h)
-    bg.addColorStop(0, '#eef5ff')
-    bg.addColorStop(0.5, '#f6f9fd')
-    bg.addColorStop(1, '#e8f0fb')
+    bg.addColorStop(0, '#ffffff')
+    bg.addColorStop(0.5, '#eef4fc')
+    bg.addColorStop(1, '#ffffff')
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
   }
@@ -228,15 +229,11 @@ onUnmounted(() => {
 <style scoped>
 .gl-field {
   width: 100%;
-  height: 420px;
+  height: 400px;
   margin: 0;
   position: relative;
   overflow: hidden;
-  background: #f6f9fd;
-}
-
-:global(.dark) .gl-field {
-  background: #070b14;
+  background: transparent;
 }
 
 canvas {
@@ -247,13 +244,13 @@ canvas {
 
 @media (max-width: 640px) {
   .gl-field {
-    height: 300px;
+    height: 280px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .gl-field {
-    height: 340px;
+    height: 320px;
   }
 }
 </style>
