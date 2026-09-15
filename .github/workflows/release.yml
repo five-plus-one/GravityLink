@@ -144,11 +144,13 @@ jobs:
           while IFS=$'\t' read -r subject sha; do
             [[ -z "$subject" ]] && continue
             item="- ${subject} (\`${sha}\`)"
-            case "$subject" in
-              feat:*|feat\(*) feats+="${item}"$'\n' ;;
-              fix:*|fix\(*)   fixes+="${item}"$'\n' ;;
-              docs:*|docs\(*) docs+="${item}"$'\n' ;;
-              chore:*|chore\(*)|ci:*|build:*|refactor:*|test:*|style:*) chores+="${item}"$'\n' ;;
+            kind="${subject%%:*}"
+            kind="${kind%%\(*}"
+            case "$kind" in
+              feat) feats+="${item}"$'\n' ;;
+              fix)  fixes+="${item}"$'\n' ;;
+              docs) docs+="${item}"$'\n' ;;
+              chore|ci|build|refactor|test|style) chores+="${item}"$'\n' ;;
               *) others+="${item}"$'\n' ;;
             esac
           done < <(git log "$range" --no-merges --pretty=format:'%s%x09%h')
