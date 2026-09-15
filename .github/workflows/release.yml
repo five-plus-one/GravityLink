@@ -129,11 +129,85 @@ jobs:
           DIGEST: ${{ steps.image.outputs.digest }}
           CHANNEL: ${{ github.ref_name }}
         run: |
-          printf 'Container: `%s:%s`\n\nDigest: `%s`\n\nPlatforms: linux/amd64, linux/arm64\n' "$IMAGE" "$IMAGE_VERSION" "$DIGEST" > release-notes.md
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then exit 0; fi
+
+          prev=""
+          if [[ "$CHANNEL" == stable ]]; then
+            prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' HEAD^ 2>/dev/null || true)
+          else
+            prev=$(git describe --tags --abbrev=0 --match 'v*'"${CHANNEL}"'.*' HEAD^ 2>/dev/null || true)
+          fi
+          range="${prev:+$prev..}HEAD"
+
+          feats=""; fixes=""; docs=""; chores=""; others=""
+          while IFS=$'\t' read -r subject sha; do
+            [[ -z "$subject" ]] && continue
+            item="- ${subject} (\`${sha}\`)"
+            case "$subject" in
+              feat:*|feat\(*) feats+="${item}"$'\n' ;;
+              fix:*|fix\(*)   fixes+="${item}"$'\n' ;;
+              docs:*|docs\(*) docs+="${item}"$'\n' ;;
+              chore:*|chore\(*)|ci:*|build:*|refactor:*|test:*|style:*) chores+="${item}"$'\n' ;;
+              *) others+="${item}"$'\n' ;;
+            esac
+          done < <(git log "$range" --no-merges --pretty=format:'%s%x09%h')
+
+          section() {
+            local title="$1" body="$2"
+            [[ -z "$body" ]] && return 0
+            printf '## %s\n\n%s\n' "$title" "$body"
+          }
+
+          if [[ "$CHANNEL" == stable ]]; then
+            badge="![stable](https://img.shields.io/badge/channel-stable-2ea44f?style=flat-square)"
+            channel_line="**正式稳定版** · 推荐生产使用"
+            pull="$IMAGE:$IMAGE_VERSION"
+            latest_note="镜像标签 \`latest\` / \`stable\` 已指向本版本。"
+          else
+            badge="![preview](https://img.shields.io/badge/channel-preview-a855f7?style=flat-square)"
+            channel_line="**预发布** · 可尝鲜验证，请勿直接用于关键生产"
+            pull="$IMAGE:$IMAGE_VERSION"
+            latest_note="镜像标签 \`preview\` 已指向本构建；\`stable\` / \`latest\` 不变。"
+          fi
+
+          {
+            printf '<div align="center">\n\n'
+            printf '# GravityLink %s\n\n' "$RELEASE_TAG"
+            printf '%s\n\n' "$badge"
+            printf '%s\n\n' "$channel_line"
+            printf '高性能短链接 · 渠道码 · 群活码 · 落地页 · 多维统计\n\n'
+            printf '[文档站](https://five-plus-one.github.io/GravityLink/) · [Docker Hub](https://hub.docker.com/r/5plus1/gravitylink)\n\n'
+            printf '</div>\n\n---\n\n'
+
+            printf '## 📦 容器镜像\n\n```bash\ndocker pull %s\n```\n\n' "$pull"
+            printf '| 项目 | 值 |\n| --- | --- |\n'
+            printf '| 镜像 | `%s` |\n' "$IMAGE:$IMAGE_VERSION"
+            printf '| Digest | `%s` |\n' "$DIGEST"
+            printf '| 平台 | `linux/amd64`, `linux/arm64` |\n'
+            printf '| 提交 | `%s` |\n\n' "$GITHUB_SHA"
+            printf '%s\n\n' "$latest_note"
+
+            printf '## 🚀 快速启动\n\n```bash\ndocker run -d \\\n  --name gravitylink \\\n  -p 18080:8080 -p 18081:8081 \\\n  -e MYSQL_PASSWORD=change-me \\\n  %s\n```\n\n' "$pull"
+            printf '详细部署与初始化见 [文档站指南](https://five-plus-one.github.io/GravityLink/guide/quick-start.html)。\n\n---\n\n'
+
+            section "✨ 新功能" "$feats"
+            section "🐞 修复" "$fixes"
+            section "📚 文档" "$docs"
+            section "🔧 工程与杂项" "$chores"
+            section "其他" "$others"
+          } > release-notes.md
+
+          # 无分类提交时给出兜底说明
+          if ! grep -q '^- ' release-notes.md; then
+            printf '本次发布包含合并与工程变更，详见下方自动生成的变更列表。\n\n' >> release-notes.md
+          fi
+
           args=()
           if [[ "$CHANNEL" == preview ]]; then args+=(--prerelease --latest=false); else args+=(--latest); fi
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then exit 0; fi
-          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "GravityLink $RELEASE_TAG" --generate-notes --notes-file release-notes.md "${args[@]}"
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+            --title "GravityLink $RELEASE_TAG" \
+            --generate-notes --notes-file release-notes.md "${args[@]}"
       - name: Publish summary
         if: steps.plan.outputs.skip != 'true'
         env:

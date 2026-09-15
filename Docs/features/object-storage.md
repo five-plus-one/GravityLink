@@ -8,6 +8,8 @@
 
 S3兼容性参考：[阿里云 OSS S3 V4签名说明](https://www.alibabacloud.com/help/en/oss/user-guide/0002-00000429)。使用 MinIO Go SDK SigV4 上传。密钥加密文件使用数据目录 wechat.key，备份时与数据库一同保留。
 
+迁移服务器时必须同时保留数据库与数据目录中的 wechat.key。若密钥文件丢失导致旧密文无法解密：查询存储状态返回空配置；保存与检测在表单已填写 Secret Access Key 时直接用新凭据覆盖写入，不再依赖旧密钥；Secret 为空则提示填写后重试。
+
 ## 上传检测与素材管理
 - OSS Endpoint 自动规范为 S3 兼容地址，使用域名寻址并从 Endpoint 校验地域；关闭分块编码。
 - 检测上传使用当前表单，保留已保存的密钥，分别检查图片写入与 CDN 读取；检测成功的图片可在素材库查看。
