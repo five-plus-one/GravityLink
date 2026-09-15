@@ -21,6 +21,15 @@ frontend/landing/dist/
 frontend/admin/node_modules/
 frontend/landing/node_modules/
 
+# 文档站
+site/node_modules/
+site/.vitepress/dist/
+site/.vitepress/cache/
+site/preview.log
+
+# Playwright
+.playwright-cli/
+
 # IDE
 .idea/
 .vscode/
