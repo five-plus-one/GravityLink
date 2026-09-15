@@ -40,7 +40,7 @@
 
 预构建镜像：`5plus1/gravitylink:latest`。本地全栈构建与外部库部署 compose 文件见 `deploy/`。
 
-公开文档站内容与本目录内部工程规格分离：`site/` 面向自托管使用者，`Docs/` 面向开发与验收。GitHub Pages 由 `.github/workflows/docs.yml` 在 `stable` 上自动部署。
+公开文档站内容与本目录内部工程规格分离：`site/` 面向自托管使用者，`Docs/` 面向开发与验收。GitHub Pages 由 `.github/workflows/docs.yml` 在 **`site` 分支**上自动部署（改文档后 push `site` 即可，不走 dev→preview→stable）。
 
 ## 开发阶段
 

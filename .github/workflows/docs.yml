@@ -1,8 +1,9 @@
 name: Deploy Docs to GitHub Pages
 
+# 文档站独立发布：push site 分支即构建并部署，不走 app 的 dev→preview→stable。
 on:
   push:
-    branches: [stable, preview, dev]
+    branches: [site]
     paths:
       - 'site/**'
       - '.github/workflows/docs.yml'
@@ -39,7 +40,6 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/stable' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

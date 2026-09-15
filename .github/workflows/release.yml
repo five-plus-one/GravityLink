@@ -22,8 +22,13 @@ jobs:
           BASE: ${{ github.base_ref }}
           HEAD: ${{ github.head_ref }}
         run: |
-          if [[ "$BASE" == stable && "$HEAD" != preview ]]; then echo 'Promote preview into stable'; exit 1; fi
-          if [[ "$BASE" == preview && "$HEAD" != dev ]]; then echo 'Promote dev into preview'; exit 1; fi
+          # site 分支可直接合入 stable/main（文档站独立流，不强制 preview 晋级）
+          if [[ "$HEAD" == "site" ]]; then
+            echo "Site branch PR into $BASE allowed"
+          else
+            if [[ "$BASE" == stable && "$HEAD" != preview ]]; then echo 'Promote preview into stable'; exit 1; fi
+            if [[ "$BASE" == preview && "$HEAD" != dev ]]; then echo 'Promote dev into preview'; exit 1; fi
+          fi
           grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' VERSION
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
