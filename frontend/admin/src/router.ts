@@ -109,7 +109,8 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   const title = (to.meta.title as string) || '';
-  document.title = title ? `${title} · GravityLink Admin` : 'GravityLink Admin';
+  const brand = localStorage.getItem('gravitylink_brand_name') || 'GravityLink';
+  document.title = title ? `${title} · ${brand} Admin` : `${brand} Admin`;
 });
 
 export default router;
