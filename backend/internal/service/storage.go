@@ -31,6 +31,9 @@ const storageConfigKey = "storage.s3.encrypted"
 
 var ErrStorage = errors.New("图片存储操作失败，请检查配置和存储桶权限")
 
+// ErrStorageUndecryptable 表示已存密文无法用当前 wechat.key 解开（常见于只迁库未迁数据目录）。
+var ErrStorageUndecryptable = errors.New("已保存的存储配置无法解密，请填写 Secret Access Key 后重新保存")
+
 type StorageConfig struct {
 	Enabled          bool   `json:"enabled"`
 	Endpoint         string `json:"endpoint"`
@@ -63,20 +66,43 @@ func (s *StorageService) config(ctx context.Context) (StorageConfig, error) {
 	}
 	key, err := NewWechatService(s.db, s.dir).key()
 	if err != nil {
-		return result, ErrStorage
+		return result, ErrStorageUndecryptable
 	}
 	plain, err := openSecret(key, row.Value)
 	if err != nil {
-		return result, ErrStorage
+		return result, ErrStorageUndecryptable
 	}
-	err = json.Unmarshal([]byte(plain), &result)
-	return result, err
+	if err = json.Unmarshal([]byte(plain), &result); err != nil {
+		return StorageConfig{}, ErrStorageUndecryptable
+	}
+	return result, nil
 }
+
+// configForOverwrite: 旧密文解不开时，仅当表单已带 Secret 才允许覆盖。
+func configForOverwrite(old StorageConfig, err error, secret string) (StorageConfig, error) {
+	if err == nil {
+		return old, nil
+	}
+	if !errors.Is(err, ErrStorageUndecryptable) {
+		return StorageConfig{}, err
+	}
+	if strings.TrimSpace(secret) == "" {
+		return StorageConfig{}, ErrStorageUndecryptable
+	}
+	return StorageConfig{}, nil
+}
+
 func (s *StorageService) Status(ctx context.Context) (StorageConfig, error) {
 	c, err := s.config(ctx)
+	if errors.Is(err, ErrStorageUndecryptable) {
+		return StorageConfig{}, nil
+	}
+	if err != nil {
+		return c, err
+	}
 	c.SecretConfigured = c.SecretKey != ""
 	c.SecretKey = ""
-	return c, err
+	return c, nil
 }
 func normalizeStorage(c StorageConfig) StorageConfig {
 	c.Endpoint = strings.TrimRight(strings.TrimSpace(c.Endpoint), "/")
@@ -125,6 +151,7 @@ func validateStorage(c StorageConfig) error {
 func (s *StorageService) Save(ctx context.Context, c StorageConfig) error {
 	c = normalizeStorage(c)
 	old, err := s.config(ctx)
+	old, err = configForOverwrite(old, err, c.SecretKey)
 	if err != nil {
 		return err
 	}
@@ -259,6 +286,7 @@ type StorageCheck struct {
 
 func (s *StorageService) Check(ctx context.Context, c StorageConfig) (StorageCheck, error) {
 	old, err := s.config(ctx)
+	old, err = configForOverwrite(old, err, c.SecretKey)
 	if err != nil {
 		return StorageCheck{}, err
 	}
