@@ -1,0 +1,302 @@
+:root {
+  --gl-void: #070b14;
+  --gl-ink: #e8eef7;
+  --gl-paper: #f6f8fb;
+  --gl-text: #14233a;
+  --gl-well: #2787f5;
+  --gl-orbit: #62a7ff;
+  --gl-dust: #8b9bb4;
+  --gl-event: #0a1628;
+  --vp-c-brand-1: #2787f5;
+  --vp-c-brand-2: #1877e5;
+  --vp-c-brand-3: #1267c9;
+  --vp-c-brand-soft: rgba(39, 135, 245, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #e8eef7 20%, #62a7ff 55%, #2787f5 90%);
+}
+
+.dark {
+  --vp-c-bg: #0b1220;
+  --vp-c-bg-alt: #070b14;
+  --vp-c-bg-elv: #111a2b;
+}
+
+/* Homepage shell */
+.VPHero .text {
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.VPHero .tagline {
+  color: var(--gl-dust);
+  font-size: 1.05rem;
+  line-height: 1.7;
+  max-width: 36rem;
+}
+
+/* Force deep-space hero on home in BOTH light and dark theme */
+.VPHome .VPHomeHero,
+.VPHome .VPHero {
+  background:
+    radial-gradient(900px 420px at 70% 20%, rgba(39, 135, 245, 0.18), transparent 55%),
+    linear-gradient(180deg, #0b1224 0%, #070b14 70%, #070b14 100%) !important;
+}
+
+.VPHome .VPHomeHero .name,
+.VPHome .VPHomeHero .text {
+  color: var(--gl-ink) !important;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  background-clip: initial !important;
+}
+
+.VPHome .VPHomeHero .name {
+  background: linear-gradient(110deg, #e8eef7 15%, #8ec2ff 55%, #2787f5 95%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+}
+
+.VPHome .VPHomeHero .tagline {
+  color: rgba(200, 214, 232, 0.88) !important;
+}
+
+.VPHome .VPHomeHero .VPButton.brand {
+  background: var(--gl-well) !important;
+  border-color: var(--gl-well) !important;
+  color: #fff !important;
+}
+
+.VPHome .VPHomeHero .VPButton.alt {
+  background: transparent !important;
+  border-color: rgba(232, 238, 247, 0.28) !important;
+  color: var(--gl-ink) !important;
+}
+
+/* seamless join from hero → canvas field */
+.VPHome .gl-field {
+  border-top: 1px solid rgba(98, 167, 255, 0.08);
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  max-width: none;
+}
+
+/* dark navbar only while home is present */
+.Layout:has(.VPHome) .VPNavBar {
+  background: rgba(7, 11, 20, 0.92) !important;
+  border-bottom-color: rgba(139, 155, 180, 0.16) !important;
+  backdrop-filter: blur(10px);
+}
+
+.Layout:has(.VPHome) .VPNavBarTitle .title,
+.Layout:has(.VPHome) .VPNavBarMenuLink,
+.Layout:has(.VPHome) .VPNavBarMenuGroup .text,
+.Layout:has(.VPHome) .VPNavBarSearchButton {
+  color: var(--gl-ink) !important;
+}
+
+.Layout:has(.VPHome) .VPNavBarSearchButton {
+  border: 1px solid rgba(232, 238, 247, 0.18) !important;
+  background: rgba(232, 238, 247, 0.06) !important;
+}
+
+.Layout:has(.VPHome) .VPNavBarMenuLink:hover,
+.Layout:has(.VPHome) .VPNavBarMenuLink.active {
+  color: var(--gl-orbit) !important;
+}
+
+.VPHome .gl-home {
+  background: linear-gradient(180deg, #f3f6fb 0%, var(--vp-c-bg) 40%);
+  padding-top: 8px;
+}
+
+.dark .VPHome .gl-home {
+  background: transparent;
+}
+
+/* Docs readability */
+.vp-doc {
+  --vp-custom-block-info-bg: rgba(39, 135, 245, 0.08);
+}
+
+.vp-doc h2 {
+  letter-spacing: -0.01em;
+}
+
+/* Custom home sections below hero */
+.gl-home {
+  margin-top: -48px;
+  padding-bottom: 64px;
+}
+
+.gl-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.gl-section-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: var(--vp-c-text-1);
+}
+
+.dark .gl-section-title {
+  color: var(--gl-ink);
+}
+
+.gl-section-desc {
+  margin: 0 0 28px;
+  color: var(--vp-c-text-2);
+  max-width: 40rem;
+}
+
+.dark .gl-section-desc {
+  color: var(--gl-dust);
+}
+
+.gl-orbit-nav {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .gl-orbit-nav {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gl-orbit-card {
+  display: block;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 14px;
+  padding: 22px 20px;
+  text-decoration: none !important;
+  background: var(--vp-c-bg-soft);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gl-orbit-card:hover {
+  border-color: var(--gl-well);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(10, 22, 40, 0.12);
+}
+
+.dark .gl-orbit-card {
+  background: rgba(17, 26, 43, 0.85);
+  border-color: rgba(139, 155, 180, 0.22);
+}
+
+.dark .gl-orbit-card:hover {
+  border-color: var(--gl-orbit);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.gl-orbit-card .label {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gl-well);
+  margin-bottom: 10px;
+}
+
+.gl-orbit-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 650;
+  color: var(--vp-c-text-1);
+}
+
+.dark .gl-orbit-card h3 {
+  color: var(--gl-ink);
+}
+
+.gl-orbit-card p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.dark .gl-orbit-card p {
+  color: var(--gl-dust);
+}
+
+.gl-constellation {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 720px) {
+  .gl-constellation {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gl-star {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 18px 18px 16px;
+  background: transparent;
+}
+
+.dark .gl-star {
+  border-color: rgba(139, 155, 180, 0.18);
+  background: rgba(11, 18, 32, 0.6);
+}
+
+.gl-star .code {
+  font-family: 'Cascadia Code', Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--gl-orbit);
+  margin-bottom: 8px;
+}
+
+.gl-star h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 620;
+  color: var(--vp-c-text-1);
+}
+
+.dark .gl-star h3 {
+  color: var(--gl-ink);
+}
+
+.gl-star p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+.dark .gl-star p {
+  color: var(--gl-dust);
+}
+
+/* Soften default home under dark space field */
+.dark .VPHome {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(39, 135, 245, 0.12), transparent 60%),
+    var(--gl-void);
+}
+
+.dark .VPFooter {
+  border-top: 1px solid rgba(139, 155, 180, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gl-orbit-card {
+    transition: none;
+  }
+
+  .gl-orbit-card:hover {
+    transform: none;
+  }
+}
