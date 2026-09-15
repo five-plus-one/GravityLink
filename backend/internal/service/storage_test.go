@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -53,5 +54,24 @@ func TestOSSConfiguration(t *testing.T) {
 	c.Region = "photos"
 	if err := validateStorage(c); err == nil {
 		t.Fatal("bucket name accepted as region")
+	}
+}
+
+func TestConfigForOverwrite(t *testing.T) {
+	ok := StorageConfig{SecretKey: "saved-secret"}
+	got, err := configForOverwrite(ok, nil, "")
+	if err != nil || got.SecretKey != "saved-secret" {
+		t.Fatal("decryptable config should pass through")
+	}
+	if _, err = configForOverwrite(StorageConfig{}, ErrStorageUndecryptable, "  "); !errors.Is(err, ErrStorageUndecryptable) {
+		t.Fatal("undecryptable without secret must fail")
+	}
+	dbErr := errors.New("db down")
+	if _, err = configForOverwrite(StorageConfig{}, dbErr, "new-secret"); !errors.Is(err, dbErr) {
+		t.Fatal("non-decrypt errors must surface")
+	}
+	got, err = configForOverwrite(StorageConfig{}, ErrStorageUndecryptable, "new-secret")
+	if err != nil || got.SecretKey != "" {
+		t.Fatal("undecryptable with form secret should recover with empty old")
 	}
 }

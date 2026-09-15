@@ -155,6 +155,10 @@ export interface AuthConfigStatus {
   audience: string;
   redirect_uri: string;
   allowed_roles: string[];
+  brand_name?: string;
+  brand_logo?: string;
+  auth_label?: string;
+  auth_logo?: string;
 }
 
 export interface ConfigListData {

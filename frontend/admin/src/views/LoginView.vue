@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BrandMark from "../components/BrandMark.vue";
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { KeyRound, Link2, LayoutTemplate, LogIn, BarChart3 } from '@lucide/vue';
 import { NAlert, NButton, NForm, NFormItem, NInput } from 'naive-ui';
@@ -14,6 +14,11 @@ const auth = useAuthStore();
 const form = reactive({ username: '', password: '' });
 const submitting = ref(false);
 const error = ref('');
+
+const brandName = computed(() => auth.config?.brand_name || 'GravityLink');
+const brandLogo = computed(() => auth.config?.brand_logo || '');
+const authLabel = computed(() => auth.config?.auth_label || 'Logto');
+const authLogo = computed(() => auth.config?.auth_logo || '');
 
 onMounted(async () => {
   try {
@@ -55,8 +60,9 @@ async function redirectBack() {
     <!-- 左侧品牌区 -->
     <section class="login-hero">
       <div class="hero-brand">
-        <BrandMark class="brand-icon" />
-        <strong>GravityLink</strong>
+        <img v-if="brandLogo" :src="brandLogo" class="brand-logo-img" :alt="brandName" />
+        <BrandMark v-else class="brand-icon" />
+        <strong>{{ brandName }}</strong>
       </div>
       <h1>短链接与活码，一个控制台全部搞定</h1>
       <p class="hero-sub">管理短链接、渠道码、群活码与落地页，跟踪每一次访问。</p>
@@ -65,7 +71,7 @@ async function redirectBack() {
         <li><LayoutTemplate :size="18" />落地页模板与主题定制</li>
         <li><BarChart3 :size="18" />多维度访问统计</li>
       </ul>
-      <footer class="hero-footer">© GravityLink</footer>
+      <footer class="hero-footer">© {{ brandName }}</footer>
     </section>
 
     <!-- 右侧登录表单 -->
@@ -74,7 +80,7 @@ async function redirectBack() {
         <header>
           <h2>管理员登录</h2>
           <p class="muted">
-            {{ auth.config?.mode === 'local' ? '使用初始化时创建的本地账号继续。' : '使用已获授权的 Logto 账号继续。' }}
+            {{ auth.config?.mode === 'local' ? '使用初始化时创建的本地账号继续。' : `使用已获授权的${authLabel}账号继续。` }}
           </p>
         </header>
 
@@ -108,8 +114,11 @@ async function redirectBack() {
         </NForm>
 
         <NButton v-else type="primary" block size="large" :disabled="!auth.config" @click="signInLogto">
-          <template #icon><LogIn :size="16" /></template>
-          使用 Logto 登录
+          <template #icon>
+            <img v-if="authLogo" :src="authLogo" class="auth-logo-img" alt="" />
+            <LogIn v-else :size="16" />
+          </template>
+          使用 {{ authLabel }} 登录
         </NButton>
       </div>
     </section>
@@ -226,4 +235,6 @@ async function redirectBack() {
 }
 .brand-icon { width:32px;height:32px;color:var(--color-primary);flex-shrink:0 }
 .brand-icon.footer-mark{width:12px;height:12px}
+.brand-logo-img { width:36px;height:36px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,0.15);flex-shrink:0 }
+.auth-logo-img { width:16px;height:16px;object-fit:contain }
 </style>

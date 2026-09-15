@@ -19,7 +19,7 @@ import {
   NTabs,
   useMessage,
 } from 'naive-ui';
-import { getSystemConfigs, resetSystem, updateSystemConfigs, type AuthConfigStatus } from '../api';
+import { getSystemConfigs, request, resetSystem, updateSystemConfigs, type AuthConfigStatus } from '../api';
 import { clearSession } from '../auth';
 import { useAuthStore } from '../stores/auth';
 
@@ -49,12 +49,19 @@ const form = reactive({
   footer: 'GravityLink',
   icp: '',
   policeIcp: '',
+  // 品牌展示（登录页/管理端）
+  brandName: 'GravityLink',
+  brandLogo: '',
+  authLabel: 'Logto',
+  authLogo: '',
   // 通知与检测
   notifyWebhookUrl: '',
   notifyHttpUrl: '',
   domainCheckEnabled: false,
 });
 const notifySaving = ref(false);
+const brandSaving = ref(false);
+const uploadingLogo = ref<'brand' | 'auth' | null>(null);
 
 const authModeLabel = computed(() => {
   const source = auth.user?.auth_source;
@@ -83,6 +90,10 @@ onMounted(async () => {
     form.footer = data.configs['public.footer'] || form.footer;
     form.icp = data.configs['public.icp'] || '';
     form.policeIcp = data.configs['public.police_icp'] || '';
+    form.brandName = data.configs['brand.name'] || data.auth?.brand_name || form.brandName;
+    form.brandLogo = data.configs['brand.logo_url'] || data.auth?.brand_logo || '';
+    form.authLabel = data.configs['brand.auth_label'] || data.auth?.auth_label || form.authLabel;
+    form.authLogo = data.configs['brand.auth_logo_url'] || data.auth?.auth_logo || '';
     form.notifyWebhookUrl = data.configs['notify_webhook_url'] || '';
     form.notifyHttpUrl = data.configs['notify_http_url'] || '';
     form.domainCheckEnabled = data.configs['domain_check_enabled'] === '1';
@@ -131,6 +142,50 @@ async function saveNotify() {
     message.error(err instanceof Error ? err.message : '保存失败');
   } finally {
     notifySaving.value = false;
+  }
+}
+
+async function saveBrand() {
+  brandSaving.value = true;
+  try {
+    await updateSystemConfigs({
+      'brand.name': form.brandName.trim() || 'GravityLink',
+      'brand.logo_url': form.brandLogo.trim(),
+      'brand.auth_label': form.authLabel.trim() || 'Logto',
+      'brand.auth_logo_url': form.authLogo.trim(),
+    });
+    await auth.loadConfig();
+    message.success('品牌配置已更新，登录页立即生效');
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '保存失败');
+  } finally {
+    brandSaving.value = false;
+  }
+}
+
+async function uploadBrandLogo(kind: 'brand' | 'auth', event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    message.error('Logo 不能超过 2 MiB');
+    return;
+  }
+  uploadingLogo.value = kind;
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const data = await request<{ Path: string }>('/api/admin/materials', { method: 'POST', body });
+    const path = (data?.Path || '').trim();
+    if (!path) throw new Error('上传成功但未返回图片地址');
+    if (kind === 'brand') form.brandLogo = path;
+    else form.authLogo = path;
+    message.success('Logo 已上传，点击「保存品牌配置」后生效');
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '上传失败');
+  } finally {
+    uploadingLogo.value = null;
   }
 }
 
@@ -198,6 +253,51 @@ async function executeReset() {
             <NFormItem label="链接不存在说明" class="span-2"><NInput v-model:value="form.notFoundMessage" type="textarea" :rows="3" /></NFormItem>
             <NFormItem label="链接过期标题" class="span-2"><NInput v-model:value="form.goneTitle" /></NFormItem>
             <NFormItem label="链接过期说明" class="span-2"><NInput v-model:value="form.goneMessage" type="textarea" :rows="3" /></NFormItem>
+          </div>
+        </NForm>
+      </section>
+          </NTabPane>
+
+          <NTabPane name="brand" tab="品牌">
+      <section class="settings-section">
+        <div class="section-head">
+          <div>
+            <strong>品牌展示</strong>
+            <p class="muted">登录页与管理端名称、账号平台文案与 Logo；配置保存在 system_configs，重启后自动保留</p>
+          </div>
+          <NButton type="primary" :loading="brandSaving" @click="saveBrand">
+            <template #icon><Save :size="16" /></template>
+            保存品牌配置
+          </NButton>
+        </div>
+        <NForm label-placement="top">
+          <div class="form-grid">
+            <NFormItem label="平台名称">
+              <NInput v-model:value="form.brandName" placeholder="如 五加一短链 / GravityLink" />
+            </NFormItem>
+            <NFormItem label="账号平台名称（登录按钮文案）">
+              <NInput v-model:value="form.authLabel" placeholder="如 五加一账号 / Logto" />
+            </NFormItem>
+            <NFormItem label="平台 Logo" class="span-2">
+              <div class="logo-row">
+                <img v-if="form.brandLogo" :src="form.brandLogo" class="logo-preview" alt="平台 Logo" />
+                <label class="upload-button">
+                  {{ uploadingLogo === 'brand' ? '上传中…' : '上传图片' }}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="uploadingLogo !== null" @change="uploadBrandLogo('brand', $event)" />
+                </label>
+                <NInput v-model:value="form.brandLogo" placeholder="或粘贴 /uploads/... 地址" style="flex:1;min-width:200px" />
+              </div>
+            </NFormItem>
+            <NFormItem label="账号平台 Logo（可选）" class="span-2">
+              <div class="logo-row">
+                <img v-if="form.authLogo" :src="form.authLogo" class="logo-preview" alt="账号平台 Logo" />
+                <label class="upload-button">
+                  {{ uploadingLogo === 'auth' ? '上传中…' : '上传图片' }}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" :disabled="uploadingLogo !== null" @change="uploadBrandLogo('auth', $event)" />
+                </label>
+                <NInput v-model:value="form.authLogo" placeholder="或粘贴 /uploads/... 地址" style="flex:1;min-width:200px" />
+              </div>
+            </NFormItem>
           </div>
         </NForm>
       </section>
@@ -383,5 +483,41 @@ async function executeReset() {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.logo-preview {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5eaee);
+  background: #fff;
+}
+
+.upload-button {
+  position: relative;
+  background: #1677ff;
+  color: white;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
 }
 </style>
