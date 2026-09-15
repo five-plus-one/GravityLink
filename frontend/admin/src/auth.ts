@@ -10,6 +10,10 @@ export interface AuthConfig {
   logout_endpoint: string;
   redirect_uri: string;
   allowed_roles: string[];
+  brand_name: string;
+  brand_logo: string;
+  auth_label: string;
+  auth_logo: string;
 }
 
 export interface AuthUser {

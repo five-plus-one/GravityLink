@@ -54,6 +54,10 @@ const logtoConfig: AuthConfig = {
   logout_endpoint: 'https://issuer.example.com/logout',
   redirect_uri: 'http://localhost:5173/auth/callback',
   allowed_roles: ['admin'],
+  brand_name: 'GravityLink',
+  brand_logo: '',
+  auth_label: 'Logto',
+  auth_logo: '',
 };
 
 beforeEach(() => {
