@@ -30,5 +30,17 @@
     .landing-beian a { color: var(--color-text-tertiary, #7a8990); text-decoration: none; margin: 0 6px; }
     .landing-beian a:hover { color: var(--color-primary, #0f766e); }
   </style>
+  <script>
+  (function(){
+  var h=location.hash.replace(/^#/,'');
+  if(!h)return;
+  try{
+  var pad=h.length%4;if(pad)h+=Array(5-pad).join('=');
+  h=h.replace(/-/g,'+').replace(/_/g,'/');
+  var code=decodeURIComponent(escape(atob(h)));
+  if(/^[A-Za-z0-9_-]{2,64}$/.test(code)){location.replace('/'+code);}
+  }catch(e){}
+  })();
+  </script>
 </body>
 </html>

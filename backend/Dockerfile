@@ -1,3 +1,5 @@
+# BUILDPLATFORM 在 buildx 下自动注入；docker-compose 经典构建可能为空，给默认值避免 FROM 解析失败
+ARG BUILDPLATFORM=linux/amd64
 FROM --platform=$BUILDPLATFORM node:22-alpine AS admin_builder
 
 WORKDIR /src/frontend/admin
@@ -6,6 +8,7 @@ RUN npm ci
 COPY frontend/admin/ ./
 RUN npm run build
 
+ARG BUILDPLATFORM=linux/amd64
 FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 WORKDIR /src/backend

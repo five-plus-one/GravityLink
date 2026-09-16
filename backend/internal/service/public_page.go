@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"strconv"
 
 	"gorm.io/gorm"
 
@@ -18,23 +19,25 @@ type PublicPageService struct {
 }
 
 type PublicPageView struct {
-	SiteName   string
-	Title      string
-	Message    string
-	Footer     string
-	ICP        string
-	PoliceICP  string
+	SiteName  string
+	Title     string
+	Message   string
+	Footer    string
+	ICP       string
+	PoliceICP string
 }
 
 func NewPublicPageService(db *gorm.DB, templates *template.Template) *PublicPageService {
 	return &PublicPageService{db: db, templates: templates}
 }
 
-func (s *PublicPageService) Home(ctx context.Context) (string, int, string) {
+func (s *PublicPageService) Home(ctx context.Context) (string, int) {
 	values := s.configs(ctx)
-	// 自动跳转：配置了 public.home.redirect_url 时直接 302
-	if redirectURL := values["public.home.redirect_url"]; redirectURL != "" {
-		return "", http.StatusFound, redirectURL
+	redirectURL := values["public.home.redirect_url"]
+	// 配置了首页跳转时仍返回 HTML（而非服务端 302），
+	// 以便先处理旧版 #base64 短码哈希（哈希不会到达服务端）。
+	if redirectURL != "" {
+		return s.renderHomeRedirect(ctx, redirectURL), http.StatusOK
 	}
 	view := s.view(ctx, "home", PublicPageView{
 		SiteName: "GravityLink",
@@ -42,7 +45,59 @@ func (s *PublicPageService) Home(ctx context.Context) (string, int, string) {
 		Message:  "这是短链接访问入口，请使用完整短链接访问目标内容。",
 		Footer:   "GravityLink",
 	})
-	return s.render(view, http.StatusOK), http.StatusOK, ""
+	return s.render(view, http.StatusOK), http.StatusOK
+}
+
+// legacyHashScript 解析旧版引流宝 #base64 短码哈希并跳转。
+// 例：/#TDlBa2Y= → base64 解码为 L9Akf → 跳转 /L9Akf。
+const legacyHashScript = `<script>
+(function(){
+var h=location.hash.replace(/^#/,'');
+if(!h)return;
+try{
+var pad=h.length%4;if(pad)h+=Array(5-pad).join('=');
+h=h.replace(/-/g,'+').replace(/_/g,'/');
+var code=decodeURIComponent(escape(atob(h)));
+if(/^[A-Za-z0-9_-]{2,64}$/.test(code)){location.replace('/'+code);return;}
+}catch(e){}
+})();
+</script>`
+
+func (s *PublicPageService) renderHomeRedirect(ctx context.Context, redirectURL string) string {
+	// 内联最小页：先尝试哈希短码，否则跳转配置的首页地址。
+	// redirectURL 来自管理员配置，使用 html/template 转义。
+	var buf bytes.Buffer
+	tmpl := template.Must(template.New("homeRedirect").Parse(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.SiteName}}</title>
+  <noscript><meta http-equiv="refresh" content="0;url={{.RedirectURL}}"></noscript>
+</head>
+<body>
+` + legacyHashScript + `
+<script>location.replace({{.RedirectURLJS}});</script>
+</body>
+</html>`))
+	siteName := "GravityLink"
+	if name := s.configValue(ctx, "public.site_name"); name != "" {
+		siteName = name
+	}
+	_ = tmpl.Execute(&buf, map[string]string{
+		"SiteName":      siteName,
+		"RedirectURL":   redirectURL,
+		"RedirectURLJS": strconv.Quote(redirectURL),
+	})
+	return buf.String()
+}
+
+func (s *PublicPageService) configValue(ctx context.Context, key string) string {
+	var item model.SystemConfig
+	if err := s.db.WithContext(ctx).Where("key_name = ?", key).First(&item).Error; err != nil {
+		return ""
+	}
+	return item.Value
 }
 
 func (s *PublicPageService) NotFound(ctx context.Context) (string, int) {

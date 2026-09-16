@@ -18,15 +18,22 @@ import (
 	"gravitylink/backend/internal/service"
 )
 
+// getHead 同时注册 GET 与 HEAD。旧版链接探测、部分客户端/爬虫会发 HEAD，
+// 仅注册 GET 时 HEAD 会落入 NoRoute 得到 404。
+func getHead(r *gin.RouterGroup, path string, handlers ...gin.HandlerFunc) {
+	r.GET(path, handlers...)
+	r.HEAD(path, handlers...)
+}
+
 func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *service.DomainCache, links *service.LinkService, landings *service.LandingService, pages *service.PublicPageService, recorder *service.AccessRecorder) {
 	public := engine.Group("/")
 	public.Use(middleware.HostRouter(domains, deps.Config, pages))
-	public.GET("/", publicHome(pages))
+	getHead(public, "/", publicHome(pages))
 
 	// 旧版 URL 兼容路由（必须在 /:code 之前注册）
 	registerLegacyRoutes(public, deps, links, landings, pages, recorder)
 
-	public.GET("/:code", dispatchByDomainType(deps, links, landings, pages, recorder))
+	getHead(public, "/:code", dispatchByDomainType(deps, links, landings, pages, recorder))
 	engine.NoRoute(func(c *gin.Context) {
 		if isAPIPath(c.Request.URL.Path) {
 			response.Error(c, http.StatusNotFound, 4004, "not found")
@@ -39,13 +46,14 @@ func registerPublicRoutes(engine *gin.Engine, deps Dependencies, domains *servic
 
 // registerLegacyRoutes 注册旧版引流宝 URL 格式的兼容路由。
 // 旧版格式：
-//   /s/?key={code}                      短链/活码/渠道码统一入口
-//   /s/dwz.php?key={code}               短链入口
-//   /common/dwz/redirect/?key={code}    短链中转
-//   /common/channel/redirect/?cid={id}  渠道码中转（数字ID）
-//   /common/qun/redirect/?qid={id}      群活码中转（数字ID）
-//   /common/shareCard/redirect/?sid={id} 分享卡片（数字ID）
-//   /common/kf/redirect/?kid={id}       客服码中转（数字ID）
+//
+//	/s/?key={code}                      短链/活码/渠道码统一入口
+//	/s/dwz.php?key={code}               短链入口
+//	/common/dwz/redirect/?key={code}    短链中转
+//	/common/channel/redirect/?cid={id}  渠道码中转（数字ID）
+//	/common/qun/redirect/?qid={id}      群活码中转（数字ID）
+//	/common/shareCard/redirect/?sid={id} 分享卡片（数字ID）
+//	/common/kf/redirect/?kid={id}       客服码中转（数字ID）
 func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *service.LinkService, landings *service.LandingService, pages *service.PublicPageService, recorder *service.AccessRecorder) {
 	// /s/ 和 /s/dwz.php：按 code 查找并重定向
 	// 同时支持 /s/?key=xxx（查询参数）和 /s/xxx（路径参数，nginx rewrite 等效）
@@ -65,39 +73,39 @@ func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *ser
 		}
 		legacyRedirect(c, deps, result, pages, recorder)
 	}
-	public.GET("/s/", handleLegacyByCode)
-	public.GET("/s/dwz.php", handleLegacyByCode)
-	public.GET("/s/:key", handleLegacyByCode)
+	getHead(public, "/s/", handleLegacyByCode)
+	getHead(public, "/s/dwz.php", handleLegacyByCode)
+	getHead(public, "/s/:key", handleLegacyByCode)
 
 	// /common/dwz/redirect/?key={code}：短链中转，按 code 查找
-	public.GET("/common/dwz/redirect/", handleLegacyByCode)
-	public.GET("/common/dwz/redirect/lx/", handleLegacyByCode) // 轮询域名格式
+	getHead(public, "/common/dwz/redirect/", handleLegacyByCode)
+	getHead(public, "/common/dwz/redirect/lx/", handleLegacyByCode) // 轮询域名格式
 
 	// /common/channel/redirect/?cid={id}：渠道码，按 legacy_id 查找
-	public.GET("/common/channel/redirect/", func(c *gin.Context) {
+	getHead(public, "/common/channel/redirect/", func(c *gin.Context) {
 		legacyIDRedirect(c, deps, links, landings, pages, recorder, "cid")
 	})
 
 	// /common/qun/redirect/?qid={id}：群活码，按 legacy_id 查找
-	public.GET("/common/qun/redirect/", func(c *gin.Context) {
+	getHead(public, "/common/qun/redirect/", func(c *gin.Context) {
 		legacyIDRedirect(c, deps, links, landings, pages, recorder, "qid")
 	})
 
 	// /common/shareCard/redirect/?sid={id}：分享卡片展示页（扫码进入，配置微信 JS-SDK 引导分享）
-	public.GET("/common/shareCard/redirect/", func(c *gin.Context) {
+	getHead(public, "/common/shareCard/redirect/", func(c *gin.Context) {
 		legacyShareCardPage(c, deps, pages)
 	})
 	// /common/shareCard/redirect/signature：微信 JS-SDK 签名端点
-	public.GET("/common/shareCard/redirect/signature", func(c *gin.Context) {
+	getHead(public, "/common/shareCard/redirect/signature", func(c *gin.Context) {
 		legacyShareCardSignature(c, deps)
 	})
 	// /common/shareCard/?sid={id}：分享卡片落地页（被分享者打开，302 到目标）
-	public.GET("/common/shareCard/", func(c *gin.Context) {
+	getHead(public, "/common/shareCard/", func(c *gin.Context) {
 		legacyShareCardRedirect(c, deps, pages)
 	})
 
 	// /common/kf/redirect/?kid={id}：客服码，按 legacy_id 查找
-	public.GET("/common/kf/redirect/", func(c *gin.Context) {
+	getHead(public, "/common/kf/redirect/", func(c *gin.Context) {
 		legacyIDRedirect(c, deps, links, landings, pages, recorder, "kid")
 	})
 
@@ -144,10 +152,10 @@ func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *ser
 			legacyRedirect(c, deps, result, pages, recorder)
 		}
 	}
-	public.GET("/common/channel/", handleLegacyLanding("cid", true))
-	public.GET("/common/qun/", handleLegacyLanding("qid", true))
-	public.GET("/common/kf/", handleLegacyLanding("kid", true))
-	public.GET("/common/dwz/", handleLegacyLanding("key", false))
+	getHead(public, "/common/channel/", handleLegacyLanding("cid", true))
+	getHead(public, "/common/qun/", handleLegacyLanding("qid", true))
+	getHead(public, "/common/kf/", handleLegacyLanding("kid", true))
+	getHead(public, "/common/dwz/", handleLegacyLanding("key", false))
 	// /common/shareCard/ 已在上方单独注册（legacyShareCardRedirect）
 }
 
@@ -195,11 +203,8 @@ func writeLegacyNotFound(c *gin.Context, pages *service.PublicPageService) {
 
 func publicHome(pages *service.PublicPageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		html, status, redirectURL := pages.Home(c.Request.Context())
-		if redirectURL != "" {
-			c.Redirect(http.StatusFound, redirectURL)
-			return
-		}
+		// Home 已在 HTML 内处理旧版 #base64 哈希与首页跳转，不再服务端 302。
+		html, status := pages.Home(c.Request.Context())
 		c.Data(status, "text/html; charset=utf-8", []byte(html))
 	}
 }
