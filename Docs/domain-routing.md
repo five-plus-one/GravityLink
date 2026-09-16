@@ -149,3 +149,19 @@ server {
 - 启动时从 MySQL 加载所有 `status = active` 的域名到内存 Map
 - 管理端更新域名配置时，API 层主动触发缓存刷新
 - 后台每 5 分钟全量刷新一次（兜底）
+
+## 旧版 URL 兼容补充
+
+### HTTP 方法
+
+公开入口路由同时注册 GET 与 HEAD。旧版链接探测、部分客户端/安全扫描会先发 HEAD；若只注册 GET，HEAD 会落入 NoRoute 得到 404，表现为「链接失效」。
+
+### `#base64` 哈希短码
+
+旧版引流宝存在 `https://host/#TDlBa2Y=` 形式：路径为 `/`，真实短码以 Base64 放在 URL hash 中（浏览器不会把 hash 发给服务端）。处理方式：
+
+1. 首页与 404 页内嵌脚本：读取 `location.hash`，Base64 解码为短码后 `location.replace('/'+code)`
+2. 配置了 `public.home.redirect_url` 时，首页返回 HTML（先哈希跳转，否则 JS 跳转配置地址），不再服务端 302——否则 hash 在 302 过程中丢失
+3. 解码结果必须匹配 `^[A-Za-z0-9_-]{2,64}$`，避免开放重定向
+
+示例：`#TDlBa2Y=` → base64 解码 → `L9Akf` → 访问 `/L9Akf`
