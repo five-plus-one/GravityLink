@@ -78,6 +78,10 @@ func writeDomainError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, 4102, "invalid domain host")
 	case errors.Is(err, service.ErrInvalidDomainType):
 		response.Error(c, http.StatusBadRequest, 4103, "invalid domain type")
+	case errors.Is(err, service.ErrInvalidHomeMode):
+		response.Error(c, http.StatusBadRequest, 4106, "invalid home mode")
+	case errors.Is(err, service.ErrInvalidHomeLanding):
+		response.Error(c, http.StatusBadRequest, 4107, "invalid home landing page (need custom or redirect_notice)")
 	case errors.Is(err, service.ErrDomainInUse):
 		response.Error(c, http.StatusConflict, 4105, "domain in use")
 	default:

@@ -161,7 +161,19 @@ server {
 旧版引流宝存在 `https://host/#TDlBa2Y=` 形式：路径为 `/`，真实短码以 Base64 放在 URL hash 中（浏览器不会把 hash 发给服务端）。处理方式：
 
 1. 首页与 404 页内嵌脚本：读取 `location.hash`，Base64 解码为短码后 `location.replace('/'+code)`
-2. 配置了 `public.home.redirect_url` 时，首页返回 HTML（先哈希跳转，否则 JS 跳转配置地址），不再服务端 302——否则 hash 在 302 过程中丢失
+2. 配置了跳转时，首页返回 HTML（先哈希跳转，否则 JS 跳转配置地址），不再服务端 302——否则 hash 在 302 过程中丢失
 3. 解码结果必须匹配 `^[A-Za-z0-9_-]{2,64}$`，避免开放重定向
+4. 跳转地址入参清洗：去掉首尾空白与包裹引号，只接受 `http`/`https` 绝对地址；无效值按未配置处理。渲染时由 `html/template` 在 script 上下文做 JS 字符串编码，**不得**再 `strconv.Quote`（二次转义会变成 `location.replace("\"https://…\"")`，浏览器跳到相对路径 `/"https://…"` 后 404）
+
+## 首页展示（按域名）
+
+访问已注册域名的 `/` 时：
+
+1. 读取该域名的 `home_mode`
+2. `redirect`：跳转 `home_redirect_url`（空则回退全局 `public.home.redirect_url`）
+3. `landing`：渲染 `home_landing_page_id`（仅 `custom` / `redirect_notice`；notice 目标取 `home_redirect_url`）
+4. `default` 或未覆盖：沿用全局首页（全局跳转地址 → 否则默认说明页）
+
+全局配置仍对所有 `default` 域名生效；按域名配置只影响该 Host。
 
 示例：`#TDlBa2Y=` → base64 解码 → `L9Akf` → 访问 `/L9Akf`

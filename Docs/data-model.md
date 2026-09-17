@@ -76,12 +76,16 @@ CREATE TABLE audit_logs (
 
 ```sql
 -- 域名配置（三种类型：入口、中转、落地）
+-- home_mode / home_redirect_url / home_landing_page_id：按域名覆盖首页展示
 CREATE TABLE domains (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     host        VARCHAR(253)    NOT NULL COMMENT '域名，不含协议和路径，如 go.example.com',
     type        ENUM('entry','transit','landing') NOT NULL COMMENT '入口/中转/落地',
     scheme      ENUM('http','https') NOT NULL DEFAULT 'https',
     remark      VARCHAR(255)    NULL COMMENT '备注',
+    home_mode   ENUM('default','redirect','landing') NOT NULL DEFAULT 'default' COMMENT '首页模式：default=跟随全局；redirect=跳转；landing=落地页',
+    home_redirect_url VARCHAR(2048) NULL COMMENT 'redirect 模式跳转地址；landing+redirect_notice 时作目标 URL',
+    home_landing_page_id BIGINT UNSIGNED NULL COMMENT 'landing 模式使用的落地页 ID（仅 custom/redirect_notice）',
     status      ENUM('active','disabled') NOT NULL DEFAULT 'active',
     created_by  BIGINT UNSIGNED NOT NULL,
     created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -33,7 +34,7 @@ func New(deps Dependencies) *gin.Engine {
 	engine.Use(gin.Recovery())
 
 	if deps.Notifier == nil {
-		deps.Notifier = service.NewNotifier(deps.DB, deps.Redis)
+		deps.Notifier = service.NewNotifier(deps.DB, deps.Redis, filepath.Dir(deps.Config.ConfigFile))
 	}
 
 	domainCache := service.NewDomainCache(deps.DB)
@@ -46,7 +47,7 @@ func New(deps Dependencies) *gin.Engine {
 	templates := web.MustLoadTemplates()
 	landingService := service.NewLandingService(deps.DB, routingService, templates)
 	authService := service.NewAuthService(deps.DB)
-	publicPageService := service.NewPublicPageService(deps.DB, templates)
+	publicPageService := service.NewPublicPageService(deps.DB, templates, landingService)
 	systemConfigService := service.NewSystemConfigService(deps.DB)
 	statService := service.NewStatService(deps.DB, deps.Redis)
 	geoResolver := service.NewGeoResolver(deps.Config.GeoDBPath, deps.Logger)
@@ -66,6 +67,7 @@ func New(deps Dependencies) *gin.Engine {
 	adminAPI.Use(middleware.AuthRequired(deps.Config, deps.Logger, deps.DB), middleware.RequireRole("admin"))
 	registerDomainRoutes(adminAPI, domainService)
 	registerConfigRoutes(adminAPI, systemConfigService, deps)
+	registerNotifyRoutes(adminAPI, deps.Notifier)
 	registerUserRoutes(adminAPI, deps.DB)
 	registerSystemRoutes(adminAPI, deps)
 	registerContentRoutes(engine, adminAPI, deps, domainCache)

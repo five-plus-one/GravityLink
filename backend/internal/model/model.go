@@ -23,6 +23,10 @@ const (
 	DomainTypeTransit = "transit"
 	DomainTypeLanding = "landing"
 
+	HomeModeDefault  = "default"
+	HomeModeRedirect = "redirect"
+	HomeModeLanding  = "landing"
+
 	LinkTypeShort   = "short"
 	LinkTypeChannel = "channel"
 	LinkTypeLiveQR  = "liveqr"
@@ -77,16 +81,20 @@ type AuditLog struct {
 }
 
 type Domain struct {
-	ID        uint64         `gorm:"primaryKey;autoIncrement"`
-	Host      string         `gorm:"size:253;not null;uniqueIndex:uk_host"`
-	Type      string         `gorm:"type:enum('entry','transit','landing');not null"`
-	Scheme    string         `gorm:"type:enum('http','https');not null;default:https"`
-	Remark    *string        `gorm:"size:255"`
-	Status    string         `gorm:"type:enum('active','disabled');not null;default:active"`
-	CreatedBy uint64         `gorm:"not null"`
-	CreatedAt time.Time      `gorm:"not null"`
-	UpdatedAt time.Time      `gorm:"not null"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	ID     uint64  `gorm:"primaryKey;autoIncrement"`
+	Host   string  `gorm:"size:253;not null;uniqueIndex:uk_host"`
+	Type   string  `gorm:"type:enum('entry','transit','landing');not null"`
+	Scheme string  `gorm:"type:enum('http','https');not null;default:https"`
+	Remark *string `gorm:"size:255"`
+	// 首页展示：default=跟随全局；redirect=跳转 home_redirect_url；landing=渲染 home_landing_page_id
+	HomeMode         string  `gorm:"type:enum('default','redirect','landing');not null;default:default"`
+	HomeRedirectURL  *string `gorm:"size:2048"`
+	HomeLandingPageID *uint64
+	Status           string    `gorm:"type:enum('active','disabled');not null;default:active"`
+	CreatedBy        uint64    `gorm:"not null"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
+	DeletedAt        gorm.DeletedAt `gorm:"index"`
 }
 
 type Link struct {
