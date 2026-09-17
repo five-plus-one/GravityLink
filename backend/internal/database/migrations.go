@@ -2,9 +2,11 @@ package database
 
 import (
 	"fmt"
-	"gorm.io/gorm"
-	"gravitylink/backend/internal/model"
 	"time"
+
+	"gorm.io/gorm"
+
+	"gravitylink/backend/internal/model"
 )
 
 type schemaVersion struct {
@@ -28,18 +30,27 @@ func MigrateVersions(db *gorm.DB) error {
 		if err := tx.AutoMigrate(&schemaVersion{}); err != nil {
 			return err
 		}
-		const version uint64 = 2026091401
-		var count int64
-		if err := tx.Model(&schemaVersion{}).Where("version = ?", version).Count(&count).Error; err != nil {
-			return err
-		}
 
+		// 增量列：先补列，再记版本，避免半失败后版本已写但列缺失。
 		for _, field := range []string{"Category", "Tags"} {
 			if !tx.Migrator().HasColumn(&model.Link{}, field) {
 				if err := tx.Migrator().AddColumn(&model.Link{}, field); err != nil {
 					return err
 				}
 			}
+		}
+		for _, field := range []string{"HomeMode", "HomeRedirectURL", "HomeLandingPageID"} {
+			if !tx.Migrator().HasColumn(&model.Domain{}, field) {
+				if err := tx.Migrator().AddColumn(&model.Domain{}, field); err != nil {
+					return err
+				}
+			}
+		}
+
+		const version uint64 = 2026091701
+		var count int64
+		if err := tx.Model(&schemaVersion{}).Where("version = ?", version).Count(&count).Error; err != nil {
+			return err
 		}
 		if count > 0 {
 			return nil

@@ -6,7 +6,8 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"strconv"
+	"net/url"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -16,6 +17,7 @@ import (
 type PublicPageService struct {
 	db        *gorm.DB
 	templates *template.Template
+	landings  *LandingService
 }
 
 type PublicPageView struct {
@@ -27,13 +29,34 @@ type PublicPageView struct {
 	PoliceICP string
 }
 
-func NewPublicPageService(db *gorm.DB, templates *template.Template) *PublicPageService {
-	return &PublicPageService{db: db, templates: templates}
+func NewPublicPageService(db *gorm.DB, templates *template.Template, landings *LandingService) *PublicPageService {
+	return &PublicPageService{db: db, templates: templates, landings: landings}
 }
 
-func (s *PublicPageService) Home(ctx context.Context) (string, int) {
+// Home 渲染公开首页。domain 为 nil 或 home_mode=default 时走全局配置；
+// redirect / landing 按域名覆盖，失败或未配置时回退全局。
+func (s *PublicPageService) Home(ctx context.Context, domain *model.Domain) (string, int) {
+	if domain != nil {
+		switch domain.HomeMode {
+		case model.HomeModeRedirect:
+			if url := s.domainRedirectURL(ctx, domain); url != "" {
+				return s.renderHomeRedirect(ctx, url), http.StatusOK
+			}
+		case model.HomeModeLanding:
+			if domain.HomeLandingPageID != nil && *domain.HomeLandingPageID > 0 && s.landings != nil {
+				target := ""
+				if domain.HomeRedirectURL != nil {
+					target = sanitizeHomeRedirectURL(*domain.HomeRedirectURL)
+				}
+				if html, err := s.landings.RenderForHome(ctx, *domain.HomeLandingPageID, target); err == nil {
+					return html, http.StatusOK
+				}
+			}
+		}
+	}
+
 	values := s.configs(ctx)
-	redirectURL := values["public.home.redirect_url"]
+	redirectURL := sanitizeHomeRedirectURL(values["public.home.redirect_url"])
 	// 配置了首页跳转时仍返回 HTML（而非服务端 302），
 	// 以便先处理旧版 #base64 短码哈希（哈希不会到达服务端）。
 	if redirectURL != "" {
@@ -46,6 +69,15 @@ func (s *PublicPageService) Home(ctx context.Context) (string, int) {
 		Footer:   "GravityLink",
 	})
 	return s.render(view, http.StatusOK), http.StatusOK
+}
+
+func (s *PublicPageService) domainRedirectURL(ctx context.Context, domain *model.Domain) string {
+	if domain.HomeRedirectURL != nil {
+		if url := sanitizeHomeRedirectURL(*domain.HomeRedirectURL); url != "" {
+			return url
+		}
+	}
+	return sanitizeHomeRedirectURL(s.configValue(ctx, "public.home.redirect_url"))
 }
 
 // legacyHashScript 解析旧版引流宝 #base64 短码哈希并跳转。
@@ -63,9 +95,26 @@ if(/^[A-Za-z0-9_-]{2,64}$/.test(code)){location.replace('/'+code);return;}
 })();
 </script>`
 
+// sanitizeHomeRedirectURL 清洗首页跳转地址：
+// 去掉首尾空白与包裹引号，只接受 http/https 绝对地址，否则返回空（走默认首页）。
+func sanitizeHomeRedirectURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.Trim(s, `"'`)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return u.String()
+}
+
 func (s *PublicPageService) renderHomeRedirect(ctx context.Context, redirectURL string) string {
 	// 内联最小页：先尝试哈希短码，否则跳转配置的首页地址。
-	// redirectURL 来自管理员配置，使用 html/template 转义。
+	// html/template 在 <script> 上下文会自动做 JS 字符串编码，
+	// 这里不能再 strconv.Quote，否则会二次转义成带引号的相对路径。
 	var buf bytes.Buffer
 	tmpl := template.Must(template.New("homeRedirect").Parse(`<!doctype html>
 <html lang="zh-CN">
@@ -77,7 +126,7 @@ func (s *PublicPageService) renderHomeRedirect(ctx context.Context, redirectURL 
 </head>
 <body>
 ` + legacyHashScript + `
-<script>location.replace({{.RedirectURLJS}});</script>
+<script>location.replace({{.RedirectURL}});</script>
 </body>
 </html>`))
 	siteName := "GravityLink"
@@ -85,9 +134,8 @@ func (s *PublicPageService) renderHomeRedirect(ctx context.Context, redirectURL 
 		siteName = name
 	}
 	_ = tmpl.Execute(&buf, map[string]string{
-		"SiteName":      siteName,
-		"RedirectURL":   redirectURL,
-		"RedirectURLJS": strconv.Quote(redirectURL),
+		"SiteName":    siteName,
+		"RedirectURL": redirectURL,
 	})
 	return buf.String()
 }

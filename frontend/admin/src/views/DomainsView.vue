@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ViewportTable from '../components/ViewportTable.vue';
 import { computed, h, onMounted, reactive, ref } from 'vue';
-import { Plus, RefreshCw, Trash2 } from '@lucide/vue';
+import { Pencil, Plus, RefreshCw, Trash2 } from '@lucide/vue';
 import {
   NAlert,
   NButton,
@@ -21,7 +21,15 @@ import {
   type FormInst,
   type FormRules,
 } from 'naive-ui';
-import { createDomain, deleteDomain, listDomains, type DomainItem } from '../api';
+import {
+  createDomain,
+  deleteDomain,
+  listDomains,
+  listLandingPages,
+  updateDomain,
+  type DomainItem,
+  type LandingPageItem,
+} from '../api';
 import { useAuthStore } from '../stores/auth';
 import { useDomainStore } from '../stores/domain';
 
@@ -30,6 +38,7 @@ const auth = useAuthStore();
 const domainStore = useDomainStore();
 
 const items = ref<DomainItem[]>([]);
+const landingPages = ref<LandingPageItem[]>([]);
 const loading = ref(false);
 const keyword = ref('');
 const selectedType = ref<string | null>(null);
@@ -49,6 +58,7 @@ function clearFilters() {
 const showModal = ref(false);
 const saving = ref(false);
 const modalError = ref('');
+const editingId = ref<number | null>(null);
 const formRef = ref<FormInst | null>(null);
 
 const form = reactive({
@@ -56,6 +66,9 @@ const form = reactive({
   type: 'entry' as 'entry' | 'transit' | 'landing',
   scheme: 'https' as 'http' | 'https',
   remark: '',
+  homeMode: 'default' as 'default' | 'redirect' | 'landing',
+  homeRedirectUrl: '',
+  homeLandingPageId: null as number | null,
 });
 
 const canWrite = computed(() => auth.isSuperAdmin || auth.user?.role === 'admin');
@@ -71,10 +84,26 @@ const schemeOptions = [
   { label: 'HTTP', value: 'http' },
 ];
 
+const homeModeOptions = [
+  { label: '跟随全局', value: 'default' },
+  { label: '自动跳转', value: 'redirect' },
+  { label: '展示落地页', value: 'landing' },
+];
+
 const typeLabelMap: Record<string, string> = { entry: '入口', transit: '中转', landing: '落地页' };
 const typeTagMap: Record<string, 'info' | 'warning' | 'success'> = { entry: 'success', transit: 'warning', landing: 'info' };
 const statusLabelMap: Record<string, string> = { active: '正常', disabled: '已停用' };
 const statusTypeMap: Record<string, 'success' | 'default'> = { active: 'success', disabled: 'default' };
+const homeModeLabelMap: Record<string, string> = { default: '跟随全局', redirect: '自动跳转', landing: '落地页' };
+
+const homeLandingOptions = computed(() =>
+  landingPages.value
+    .filter((p) => p.Template === 'custom' || p.Template === 'redirect_notice')
+    .map((p) => ({
+      label: `${p.Title}（${p.Template === 'custom' ? '自定义' : '跳转提示'}）`,
+      value: p.ID,
+    })),
+);
 
 const rules: FormRules = {
   host: [
@@ -94,13 +123,43 @@ const rules: FormRules = {
   ],
 };
 
+function sanitizeRedirectUrl(raw: string): string {
+  let s = raw.trim().replace(/^["']+|["']+$/g, '').trim();
+  if (!s) return '';
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
+}
+
+function homeSummary(row: DomainItem): string {
+  if (row.HomeMode === 'redirect') {
+    return row.HomeRedirectURL ? `跳转 ${row.HomeRedirectURL}` : '跳转（回退全局）';
+  }
+  if (row.HomeMode === 'landing') {
+    const page = landingPages.value.find((p) => p.ID === row.HomeLandingPageID);
+    return page ? `落地页：${page.Title}` : `落地页 #${row.HomeLandingPageID ?? '—'}`;
+  }
+  return '跟随全局';
+}
+
 const columns: DataTableColumns<DomainItem> = [
   { title: '域名', key: 'Host', render: (row) => h('code', {}, `${row.Scheme}://${row.Host}`) },
   {
     title: '用途',
     key: 'Type',
-    width: 110,
+    width: 90,
     render: (row) => h(NTag, { type: typeTagMap[row.Type] || 'default', size: 'small' }, () => typeLabelMap[row.Type] || row.Type),
+  },
+  {
+    title: '首页',
+    key: 'HomeMode',
+    width: 180,
+    ellipsis: { tooltip: true },
+    render: (row) => h('span', { class: 'muted' }, homeSummary(row)),
   },
   { title: '备注', key: 'Remark', ellipsis: { tooltip: true }, render: (row) => row.Remark || h('span', { class: 'muted' }, '—') },
   {
@@ -113,27 +172,41 @@ const columns: DataTableColumns<DomainItem> = [
   {
     title: '操作',
     key: 'actions',
-    width: 90,
+    width: 110,
     render: (row) =>
       canWrite.value
-        ? h(
-            NPopconfirm,
-            { onPositiveClick: () => removeDomain(row), positiveText: '删除', negativeText: '取消' },
-            {
-              trigger: () =>
-                h(
-                  NButton,
-                  { text: true, size: 'small', type: 'error' },
-                  { icon: () => h(NIcon, { size: 14 }, { default: () => h(Trash2) }) },
-                ),
-              default: () => `确认删除域名 ${row.Host}？删除后相关短链将无法访问。`,
-            },
-          )
+        ? h('div', { style: 'display:flex;gap:4px;align-items:center' }, [
+            h(
+              NButton,
+              { text: true, size: 'small', onClick: () => openEdit(row) },
+              { icon: () => h(NIcon, { size: 14 }, { default: () => h(Pencil) }) },
+            ),
+            h(
+              NPopconfirm,
+              { onPositiveClick: () => removeDomain(row), positiveText: '删除', negativeText: '取消' },
+              {
+                trigger: () =>
+                  h(
+                    NButton,
+                    { text: true, size: 'small', type: 'error' },
+                    { icon: () => h(NIcon, { size: 14 }, { default: () => h(Trash2) }) },
+                  ),
+                default: () => `确认删除域名 ${row.Host}？删除后相关短链将无法访问。`,
+              },
+            ),
+          ])
         : h('span', { class: 'muted' }, '—'),
   },
 ];
 
-onMounted(refresh);
+onMounted(async () => {
+  await refresh();
+  try {
+    landingPages.value = (await listLandingPages()).items;
+  } catch {
+    // 落地页列表仅用于首页下拉，失败不阻塞域名页
+  }
+});
 
 async function refresh() {
   loading.value = true;
@@ -148,9 +221,49 @@ async function refresh() {
 }
 
 function openCreate() {
-  Object.assign(form, { host: '', type: 'entry', scheme: 'https', remark: '' });
+  editingId.value = null;
+  Object.assign(form, {
+    host: '',
+    type: 'entry',
+    scheme: 'https',
+    remark: '',
+    homeMode: 'default',
+    homeRedirectUrl: '',
+    homeLandingPageId: null,
+  });
   modalError.value = '';
   showModal.value = true;
+}
+
+function openEdit(row: DomainItem) {
+  editingId.value = row.ID;
+  Object.assign(form, {
+    host: row.Host,
+    type: row.Type,
+    scheme: row.Scheme,
+    remark: row.Remark || '',
+    homeMode: row.HomeMode || 'default',
+    homeRedirectUrl: row.HomeRedirectURL || '',
+    homeLandingPageId: row.HomeLandingPageID ?? null,
+  });
+  modalError.value = '';
+  showModal.value = true;
+}
+
+function buildHomePayload() {
+  const mode = form.homeMode;
+  const redirectUrl = mode === 'redirect' || mode === 'landing' ? sanitizeRedirectUrl(form.homeRedirectUrl) : '';
+  if ((mode === 'redirect') && form.homeRedirectUrl.trim() && !redirectUrl) {
+    throw new Error('首页自动跳转地址无效，需为 http/https 完整地址');
+  }
+  if (mode === 'landing' && !form.homeLandingPageId) {
+    throw new Error('请选择作为首页的落地页（仅自定义 / 跳转提示）');
+  }
+  return {
+    home_mode: mode,
+    home_redirect_url: redirectUrl || undefined,
+    home_landing_page_id: mode === 'landing' ? form.homeLandingPageId : null,
+  };
 }
 
 async function submit() {
@@ -162,8 +275,26 @@ async function submit() {
   }
   saving.value = true;
   try {
-    await createDomain({ ...form, host: form.host.trim(), remark: form.remark || undefined });
-    message.success(`域名 ${form.host} 已添加`);
+    const home = buildHomePayload();
+    if (editingId.value == null) {
+      await createDomain({
+        host: form.host.trim(),
+        type: form.type,
+        scheme: form.scheme,
+        remark: form.remark || undefined,
+        ...home,
+      });
+      message.success(`域名 ${form.host} 已添加`);
+    } else {
+      await updateDomain(editingId.value, {
+        host: form.host.trim(),
+        type: form.type,
+        scheme: form.scheme,
+        remark: form.remark || undefined,
+        ...home,
+      });
+      message.success(`域名 ${form.host} 已更新`);
+    }
     showModal.value = false;
     await refresh();
   } catch (err) {
@@ -219,7 +350,7 @@ function messageOf(err: unknown): string {
       <NSelect v-model:value="selectedType" clearable :options="typeOptions" placeholder="全部用途" aria-label="筛选域名用途" />
       <span class="muted" aria-live="polite">共 {{ filteredItems.length }} 个域名</span>
     </div>
-    <ViewportTable :columns="columns" :data="filteredItems" :loading="loading" :pagination="{ pageSize: 20 }" :row-key="(row: DomainItem) => row.ID" :scroll-x="640" :bordered="false" size="small">
+    <ViewportTable :columns="columns" :data="filteredItems" :loading="loading" :pagination="{ pageSize: 20 }" :row-key="(row: DomainItem) => row.ID" :scroll-x="780" :bordered="false" size="small">
       <template #empty>
         <NEmpty :description="items.length ? '没有符合条件的域名' : '尚未配置域名'">
           <template #extra>
@@ -231,10 +362,10 @@ function messageOf(err: unknown): string {
     </ViewportTable>
   </NCard>
 
-  <NModal v-model:show="showModal" preset="card" title="添加域名" style="width: min(600px, calc(100vw - 32px))" :mask-closable="false" :closable="!saving" :close-on-esc="!saving">
+  <NModal v-model:show="showModal" preset="card" :title="editingId == null ? '添加域名' : '编辑域名'" style="width: min(640px, calc(100vw - 32px))" :mask-closable="false" :closable="!saving" :close-on-esc="!saving">
     <NForm ref="formRef" :model="form" :rules="rules" label-placement="top">
       <NFormItem label="域名（不含协议和路径）" path="host">
-        <NInput v-model:value="form.host" placeholder="go.example.com" />
+        <NInput v-model:value="form.host" placeholder="go.example.com" :disabled="editingId != null" />
       </NFormItem>
       <div class="form-row">
         <NFormItem label="用途">
@@ -248,14 +379,33 @@ function messageOf(err: unknown): string {
       <NFormItem label="备注">
         <NInput v-model:value="form.remark" placeholder="（可选）" />
       </NFormItem>
+
+      <NFormItem label="首页展示">
+        <NSelect v-model:value="form.homeMode" :options="homeModeOptions" />
+      </NFormItem>
+      <p class="type-description">
+        跟随全局：使用系统设置的首页；自动跳转：访问该域名根路径时跳转；展示落地页：根路径渲染指定落地页。
+      </p>
+      <NFormItem v-if="form.homeMode === 'redirect' || form.homeMode === 'landing'" label="跳转地址">
+        <NInput v-model:value="form.homeRedirectUrl" placeholder="https://example.com/ （redirect 必填；landing 的跳转提示页用作目标）" />
+      </NFormItem>
+      <NFormItem v-if="form.homeMode === 'landing'" label="首页落地页">
+        <NSelect
+          v-model:value="form.homeLandingPageId"
+          :options="homeLandingOptions"
+          placeholder="仅支持自定义 / 跳转提示模板"
+          clearable
+        />
+      </NFormItem>
+
       <NAlert v-if="modalError" type="error" :show-icon="true" style="margin-bottom: var(--space-3)">{{ modalError }}</NAlert>
-      <NAlert type="info" :show-icon="true">DNS 解析与证书需要在反向代理层完成。</NAlert>
+      <NAlert type="info" :show-icon="true">DNS 解析与证书需要在反向代理层完成。编辑时域名不可改。</NAlert>
     </NForm>
 
     <template #footer>
       <div style="display: flex; justify-content: flex-end; gap: var(--space-2)">
         <NButton :disabled="saving" @click="showModal = false">取消</NButton>
-        <NButton type="primary" :loading="saving" @click="submit">添加</NButton>
+        <NButton type="primary" :loading="saving" @click="submit">{{ editingId == null ? '添加' : '保存' }}</NButton>
       </div>
     </template>
   </NModal>

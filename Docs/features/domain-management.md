@@ -14,15 +14,35 @@
 
 同一系统可配置多个各类型域名，创建链接时选择使用哪个。
 
-## 管理端操作
+## 按域名配置首页
 
-### 添加域名
+每个域名可单独设置访问根路径 `/` 时的展示逻辑；未覆盖的域名回退到系统设置里的全局首页。
+
+| 模式 | 枚举 `home_mode` | 行为 |
+|-----|------------------|------|
+| 跟随全局 | `default`（默认） | 使用系统设置的首页标题/说明；若配置了全局「首页自动跳转地址」则跳转 |
+| 自动跳转 | `redirect` | 跳转到该域名的 `home_redirect_url`；为空时回退全局跳转地址，再为空则显示默认首页 |
+| 落地页 | `landing` | 渲染 `home_landing_page_id` 指定的落地页（仅支持 `custom` / `redirect_notice` 模板；`redirect_notice` 的目标 URL 取 `home_redirect_url`）。落地页无效时回退默认首页 |
 
 字段：
+
+- `home_mode`：`default` / `redirect` / `landing`
+- `home_redirect_url`：http/https 绝对地址（自动去掉首尾空白与包裹引号）
+- `home_landing_page_id`：落地页 ID
+
+说明：活码/客服/卡密等模板依赖具体链接上下文，不能直接作为域名首页。
+
+## 管理端操作
+
+### 添加 / 编辑域名
+
+字段：
+
 - `host`：域名（不含协议，如 `go.example.com`）
 - `type`：类型选择
 - `scheme`：`http` 或 `https`（默认 https）
 - `remark`：备注说明
+- `home_mode` / `home_redirect_url` / `home_landing_page_id`：按域名首页（可选，默认跟随全局）
 
 添加后需在 DNS 和 Nginx 中手动配置，系统不自动处理 DNS 和证书（开源版本由用户自行管理 TLS）。
 
@@ -60,3 +80,9 @@ GravityLink 本身不处理 TLS，依赖 Nginx 做 TLS 终止。Nginx 需要：
 ```
 
 创建链接时选择使用哪个入口域名，同一个系统的不同业务线可以使用不同的入口域名。
+
+首页示例：
+
+- `r-l.ink` → `redirect` 到官网
+- `s.example.com` → `default` 显示说明页
+- `page.example.com` → `landing` 挂自定义门户页

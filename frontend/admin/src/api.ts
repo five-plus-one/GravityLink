@@ -72,6 +72,9 @@ export interface DomainItem {
   Type: 'entry' | 'transit' | 'landing';
   Scheme: 'http' | 'https';
   Remark: string | null;
+  HomeMode: 'default' | 'redirect' | 'landing';
+  HomeRedirectURL: string | null;
+  HomeLandingPageID: number | null;
   Status: string;
 }
 
@@ -85,7 +88,12 @@ export interface CreateDomainPayload {
   type: 'entry' | 'transit' | 'landing';
   scheme: 'http' | 'https';
   remark?: string;
+  home_mode?: 'default' | 'redirect' | 'landing';
+  home_redirect_url?: string;
+  home_landing_page_id?: number | null;
 }
+
+export type UpdateDomainPayload = Partial<CreateDomainPayload>;
 
 export interface LandingPageItem {
   Content?: Record<string,unknown>;
@@ -210,6 +218,13 @@ export async function listDomains(): Promise<DomainListData> {
 export async function createDomain(payload: CreateDomainPayload): Promise<DomainItem> {
   return request<DomainItem>('/api/admin/domains', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateDomain(id: number, payload: UpdateDomainPayload): Promise<DomainItem> {
+  return request<DomainItem>(`/api/admin/domains/${id}`, {
+    method: 'PUT',
     body: JSON.stringify(payload),
   });
 }
