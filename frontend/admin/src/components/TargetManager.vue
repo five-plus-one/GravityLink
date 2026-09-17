@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed,ref,watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { NButton,NIcon,NModal,NInput,NInputNumber,NSelect,NDatePicker,NFormItem,NAlert,NPopconfirm,useMessage } from 'naive-ui';
 import { Settings2 } from '@lucide/vue';
 import { request } from '../api';
@@ -10,7 +11,22 @@ type Target={ID:number;Label:string;TargetURL:string;Weight:number;ScanLimit:num
 const show=ref(false),busy=ref(false),mode=ref('round_robin');
 const items=ref<Target[]>([]),editing=ref<Target|null>(null),expiry=ref<number|null>(null);
 const message=useMessage();
+const router=useRouter();
 const imageError=ref(false);
+// T+7 到期引导
+const showExpireModal=ref(false);
+const suggestedExpire=ref<number|null>(null);
+const expireModalMode=ref<'new'|'replace'>('new');
+function tPlus7(){return Date.now()+7*24*60*60*1000;}
+function formatDT(ts:number){return new Date(ts).toLocaleString('zh-CN',{hour12:false});}
+function openExpireSuggest(){suggestedExpire.value=tPlus7();showExpireModal.value=true;}
+function confirmSuggestedExpire(){if(suggestedExpire.value)expiry.value=suggestedExpire.value;showExpireModal.value=false;}
+function skipExpireSuggest(){showExpireModal.value=false;}
+// 通知引导
+const notifyGuide=ref(false);
+const expireFilled=ref(0);
+const NOTIFY_GUIDE_KEY='gravitylink.notify_guide_dismissed';
+function dismissGuide(){notifyGuide.value=false;try{localStorage.setItem(NOTIFY_GUIDE_KEY,'1');}catch{/* ignore */}}
 // P1：批量设置阈值
 const batchLimit=ref<number|null>(null),batchBusy=ref(false);
 function state(t:Target){if(t.Status!=='active')return '已停用';if(t.ExpireAt&&Date.parse(t.ExpireAt)<=Date.now())return '已到期';if(t.ScanLimit!==null&&t.ScanCount>=t.ScanLimit)return '已满额';return '可分发';}
@@ -21,13 +37,21 @@ async function resetCount(t:Target){if(busy.value)return;busy.value=true;try{awa
 async function removeTarget(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/${t.ID}`,{method:'DELETE'});await load();message.success(`已删除「${t.Label||'未命名'}」`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
 async function applyBatchLimit(){if(batchBusy.value)return;batchBusy.value=true;try{const r=await request<{updated:number}>(`/api/admin/links/${props.linkId}/targets/batch-limit`,{method:'PUT',body:JSON.stringify({scan_limit:batchLimit.value})});await load();message.success(`已为 ${r.updated} 个二维码统一设置阈值`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{batchBusy.value=false;}}
 async function refresh(){try{await load();}catch(e){message.error(e instanceof Error?e.message:"操作失败");}}
-async function addMaterials(urls:string[]){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets/batch`,{method:'POST',body:JSON.stringify({urls})});await load();message.success(`已添加 ${urls.length} 张二维码，请按需设置阈值和到期时间`);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+async function addMaterials(urls:string[]){if(busy.value)return;busy.value=true;try{const r=await request<{total:number;expire_filled?:number;has_enabled_notify?:boolean}>(`/api/admin/links/${props.linkId}/targets/batch`,{method:'POST',body:JSON.stringify({urls})});await load();expireFilled.value=r.expire_filled||0;message.success(`已添加 ${urls.length} 张二维码${expireFilled.value?`，已自动识别 ${expireFilled.value} 个到期时间`:''}，请按需设置阈值`);maybeShowGuide(r.has_enabled_notify!==true);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+function maybeShowGuide(noChannel:boolean){if(!noChannel)return;try{if(localStorage.getItem(NOTIFY_GUIDE_KEY)==='1')return;}catch{/* ignore */}notifyGuide.value=true;}
 async function toggle(t:Target){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...t,Status:t.Status==='active'?'disabled':'active'})});await load();}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
-watch(()=>editing.value?.TargetURL,()=>{imageError.value=false;});
+watch(()=>editing.value?.TargetURL,(url,oldUrl)=>{
+  imageError.value=false;
+  if(!url||url===oldUrl||!editing.value)return;
+  // 新增或改图后，若尚未设置到期，弹出 T+7 引导
+  if(expiry.value)return;
+  expireModalMode.value=editing.value.ID===0?'new':'replace';
+  openExpireSuggest();
+});
 async function load(){const r=await request<{mode:string;items:Target[]}>(`/api/admin/links/${props.linkId}/targets`);items.value=r.items;mode.value=r.mode;}
 async function open(){if(busy.value)return;busy.value=true;try{await load();show.value=true;editing.value=null;}catch(e){message.error(e instanceof Error?e.message:"加载失败");}finally{busy.value=false;}}
 function edit(t?:Target){editing.value=t?{...t,WxRemark:t.WxRemark||''}:{ID:0,Label:'',TargetURL:'',Weight:1,ScanLimit:null,ScanCount:0,Priority:0,Status:'active',ExpireAt:null,Owner:'',WxRemark:''};expiry.value=t?.ExpireAt?Date.parse(t.ExpireAt):null;}
-async function save(){if(!editing.value||busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,WxRemark:editing.value.WxRemark||undefined,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});await load();editing.value=null;message.success('二维码配置已保存');}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
+async function save(){if(!editing.value||busy.value)return;busy.value=true;try{const r=await request<{ExpireAt?:string|null}>(`/api/admin/links/${props.linkId}/targets`,{method:'POST',body:JSON.stringify({...editing.value,WxRemark:editing.value.WxRemark||undefined,ExpireAt:expiry.value?new Date(expiry.value).toISOString():null})});if(!expiry.value&&r?.ExpireAt){expiry.value=Date.parse(r.ExpireAt);message.info('已根据二维码自动填入到期时间，可手动调整');}await load();editing.value=null;message.success('二维码配置已保存');maybeShowGuide(false);}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
 async function saveMode(){if(busy.value)return;busy.value=true;try{await request(`/api/admin/links/${props.linkId}/strategy`,{method:'PUT',body:JSON.stringify({mode:mode.value})});message.success('展示模式已保存');}catch(e){message.error(e instanceof Error?e.message:"操作失败");}finally{busy.value=false;}}
 </script>
 <template>
@@ -44,6 +68,11 @@ async function saveMode(){if(busy.value)return;busy.value=true;try{await request
    </div>
   </div>
   <NAlert>顺序模式优先级越高越先展示，达到阈值后切换；阈值不限时会持续使用该码。加权随机按权重分配，不按优先级。停用、到期、满额目标不参与分发。全部耗尽时访客会看到「暂无可用群」提示。</NAlert>
+  <NAlert v-if="notifyGuide" type="info" style="margin-top:12px">
+    已为部分二维码识别到期时间。开启邮件/企业微信通知后，到期前会自动提醒你换码。
+    <NButton size="small" type="primary" style="margin-left:8px" @click="dismissGuide();router.push('/settings')">去配置通知</NButton>
+    <NButton size="small" style="margin-left:8px" @click="dismissGuide">不再提示</NButton>
+  </NAlert>
   <p>共 {{items.length}} 个二维码，当前 <b>{{available}}</b> 个可分发。<NButton :disabled="busy" @click="refresh">刷新状态</NButton></p>
   <NAlert v-if="!available" type="warning">暂无可分发二维码，请添加二维码，或检查启停、阈值和到期时间。需要重置阈值计数时请先停用该二维码。</NAlert>
   <div style="overflow:auto"><table><thead><tr><th>预览</th><th>名称</th><th>访问 / 阈值</th><th>权重 / 优先级</th><th>群主</th><th>微信号</th><th>到期</th><th>状态</th><th>操作</th></tr></thead><tbody>
@@ -72,6 +101,16 @@ async function saveMode(){if(busy.value)return;busy.value=true;try{await request
    <div class="fields"><NFormItem label="扫码阈值"><NInputNumber v-model:value="editing.ScanLimit" :min="1" clearable/></NFormItem><NFormItem label="权重（加权随机模式生效）"><NInputNumber v-model:value="editing.Weight" :min="1"/></NFormItem><NFormItem label="优先级（顺序模式生效）"><NInputNumber v-model:value="editing.Priority"/></NFormItem><NFormItem label="群主"><NInput v-model:value="editing.Owner"/></NFormItem><NFormItem label="微信号（客服码展示页可复制）"><NInput v-model:value="editing.WxRemark" placeholder="如 wxid_xxx 或手机号"/></NFormItem><NFormItem label="到期时间"><NDatePicker v-model:value="expiry" type="datetime" clearable/></NFormItem><NFormItem label="状态"><NSelect v-model:value="editing.Status" :options="[{label:'启用',value:'active'},{label:'停用',value:'disabled'}]"/></NFormItem></div>
    <NButton type="primary" :loading="busy" @click="save">保存二维码</NButton><NButton @click="editing=null">取消编辑</NButton>
   </section>
+  <NModal v-model:show="showExpireModal" preset="card" title="设置到期时间" style="width:min(440px,94vw)" :mask-closable="false">
+   <p>检测到已选择群二维码。微信群码通常约 7 天过期，是否将到期时间设为：</p>
+   <p style="font-weight:600;margin:12px 0">{{suggestedExpire?formatDT(suggestedExpire):''}}（T+7）</p>
+   <p class="muted" style="margin-bottom:16px">也可以稍后在下方「到期时间」里手动选择。</p>
+   <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <NButton type="primary" @click="confirmSuggestedExpire">确定使用 T+7</NButton>
+    <NButton @click="skipExpireSuggest">手动选择日期</NButton>
+    <NButton quaternary @click="skipExpireSuggest">稍后再说</NButton>
+   </div>
+  </NModal>
  </NModal>
 </template>
 <style scoped>

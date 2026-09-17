@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import StorageSettings from "../components/StorageSettings.vue";
+import NotifySettings from "../components/NotifySettings.vue";
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { AlertTriangle, ExternalLink, RotateCcw, Save } from '@lucide/vue';
@@ -54,12 +55,7 @@ const form = reactive({
   brandLogo: '',
   authLabel: 'Logto',
   authLogo: '',
-  // 通知与检测
-  notifyWebhookUrl: '',
-  notifyHttpUrl: '',
-  domainCheckEnabled: false,
 });
-const notifySaving = ref(false);
 const brandSaving = ref(false);
 const uploadingLogo = ref<'brand' | 'auth' | null>(null);
 
@@ -94,9 +90,6 @@ onMounted(async () => {
     form.brandLogo = data.configs['brand.logo_url'] || data.auth?.brand_logo || '';
     form.authLabel = data.configs['brand.auth_label'] || data.auth?.auth_label || form.authLabel;
     form.authLogo = data.configs['brand.auth_logo_url'] || data.auth?.auth_logo || '';
-    form.notifyWebhookUrl = data.configs['notify_webhook_url'] || '';
-    form.notifyHttpUrl = data.configs['notify_http_url'] || '';
-    form.domainCheckEnabled = data.configs['domain_check_enabled'] === '1';
   } catch (err) {
     message.error(err instanceof Error ? err.message : '加载配置失败');
   } finally {
@@ -126,22 +119,6 @@ async function save() {
     message.error(err instanceof Error ? err.message : '保存失败');
   } finally {
     saving.value = false;
-  }
-}
-
-async function saveNotify() {
-  notifySaving.value = true;
-  try {
-    await updateSystemConfigs({
-      notify_webhook_url: form.notifyWebhookUrl.trim(),
-      notify_http_url: form.notifyHttpUrl.trim(),
-      domain_check_enabled: form.domainCheckEnabled ? '1' : '0',
-    });
-    message.success('通知与检测配置已更新，立即生效');
-  } catch (err) {
-    message.error(err instanceof Error ? err.message : '保存失败');
-  } finally {
-    notifySaving.value = false;
   }
 }
 
@@ -318,29 +295,7 @@ async function executeReset() {
           </NTabPane>
 
           <NTabPane name="notify" tab="通知与检测">
-      <section class="settings-section">
-        <div class="section-head">
-          <div><strong>通知渠道</strong><p class="muted">活码二维码耗尽、域名被封等事件会自动推送；两个渠道都留空则不通知</p></div>
-          <NButton type="primary" :loading="notifySaving" @click="saveNotify">
-            <template #icon><Save :size="16" /></template>
-            保存配置
-          </NButton>
-        </div>
-        <NForm label-placement="top">
-          <NFormItem label="企业微信机器人 Webhook">
-            <NInput v-model:value="form.notifyWebhookUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" />
-          </NFormItem>
-          <NFormItem label="自定义通知接口">
-            <NInput v-model:value="form.notifyHttpUrl" placeholder="POST JSON {title, content, time}；兼容 Bark/Server酱 等自建转发" />
-          </NFormItem>
-          <NFormItem label="域名封禁检测">
-            <div class="check-row">
-              <NSwitch v-model:value="form.domainCheckEnabled" />
-              <span class="muted">每小时借微信官方桥接接口检测全部活跃域名，发现被微信封禁立即通知（默认关闭）</span>
-            </div>
-          </NFormItem>
-        </NForm>
-      </section>
+      <NotifySettings />
           </NTabPane>
 
           <NTabPane v-if="auth.isSuperAdmin" name="danger" tab="危险区">
