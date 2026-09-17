@@ -13,9 +13,11 @@ import (
 )
 
 var (
-	ErrDomainInUse       = errors.New("domain in use")
-	ErrInvalidDomainHost = errors.New("invalid domain host")
-	ErrInvalidDomainType = errors.New("invalid domain type")
+	ErrDomainInUse        = errors.New("domain in use")
+	ErrInvalidDomainHost  = errors.New("invalid domain host")
+	ErrInvalidDomainType  = errors.New("invalid domain type")
+	ErrInvalidHomeMode    = errors.New("invalid home mode")
+	ErrInvalidHomeLanding = errors.New("invalid home landing page")
 )
 
 type DomainService struct {
@@ -24,11 +26,14 @@ type DomainService struct {
 }
 
 type DomainInput struct {
-	Host      string `json:"host"`
-	Type      string `json:"type"`
-	Scheme    string `json:"scheme"`
-	Remark    string `json:"remark"`
-	CreatedBy uint64 `json:"-"`
+	Host              string  `json:"host"`
+	Type              string  `json:"type"`
+	Scheme            string  `json:"scheme"`
+	Remark            string  `json:"remark"`
+	HomeMode          string  `json:"home_mode"`
+	HomeRedirectURL   string  `json:"home_redirect_url"`
+	HomeLandingPageID *uint64 `json:"home_landing_page_id"`
+	CreatedBy         uint64  `json:"-"`
 }
 
 func NewDomainService(db *gorm.DB, cache *DomainCache) *DomainService {
@@ -44,6 +49,15 @@ func (s *DomainService) Create(ctx context.Context, input DomainInput) (model.Do
 	domain, err := domainFromInput(input)
 	if err != nil {
 		return model.Domain{}, err
+	}
+	if domain.HomeMode == model.HomeModeLanding {
+		checked, err := s.applyHomeConfig(ctx, domain, input)
+		if err != nil {
+			return model.Domain{}, err
+		}
+		domain.HomeMode = checked.HomeMode
+		domain.HomeRedirectURL = checked.HomeRedirectURL
+		domain.HomeLandingPageID = checked.HomeLandingPageID
 	}
 
 	if err := s.db.WithContext(ctx).Create(&domain).Error; err != nil {
@@ -83,6 +97,15 @@ func (s *DomainService) Update(ctx context.Context, id uint64, input DomainInput
 	}
 	if input.Remark != "" {
 		updates["remark"] = input.Remark
+	}
+	if input.HomeMode != "" || input.HomeRedirectURL != "" || input.HomeLandingPageID != nil {
+		home, err := s.applyHomeConfig(ctx, domain, input)
+		if err != nil {
+			return model.Domain{}, err
+		}
+		updates["home_mode"] = home.HomeMode
+		updates["home_redirect_url"] = home.HomeRedirectURL
+		updates["home_landing_page_id"] = home.HomeLandingPageID
 	}
 
 	if len(updates) == 0 {
@@ -154,14 +177,79 @@ func domainFromInput(input DomainInput) (model.Domain, error) {
 		remark = optionalString(input.Remark)
 	}
 
+	homeMode := input.HomeMode
+	if homeMode == "" {
+		homeMode = model.HomeModeDefault
+	}
+	if !validHomeMode(homeMode) {
+		return model.Domain{}, ErrInvalidHomeMode
+	}
+	var homeURL *string
+	if u := sanitizeHomeRedirectURL(input.HomeRedirectURL); u != "" {
+		homeURL = &u
+	}
+
 	return model.Domain{
-		Host:      host,
-		Type:      input.Type,
-		Scheme:    scheme,
-		Remark:    remark,
-		Status:    model.StatusActive,
-		CreatedBy: input.CreatedBy,
+		Host:              host,
+		Type:              input.Type,
+		Scheme:            scheme,
+		Remark:            remark,
+		HomeMode:          homeMode,
+		HomeRedirectURL:   homeURL,
+		HomeLandingPageID: input.HomeLandingPageID,
+		Status:            model.StatusActive,
+		CreatedBy:         input.CreatedBy,
 	}, nil
+}
+
+// applyHomeConfig 校验并归一化首页配置（Create/Update 共用）。
+func (s *DomainService) applyHomeConfig(ctx context.Context, current model.Domain, input DomainInput) (model.Domain, error) {
+	mode := input.HomeMode
+	if mode == "" {
+		mode = current.HomeMode
+	}
+	if mode == "" {
+		mode = model.HomeModeDefault
+	}
+	if !validHomeMode(mode) {
+		return model.Domain{}, ErrInvalidHomeMode
+	}
+
+	var homeURL *string
+	if u := sanitizeHomeRedirectURL(input.HomeRedirectURL); u != "" {
+		homeURL = &u
+	}
+
+	var landingID *uint64
+	if mode == model.HomeModeLanding {
+		if input.HomeLandingPageID == nil || *input.HomeLandingPageID == 0 {
+			return model.Domain{}, ErrInvalidHomeLanding
+		}
+		var page model.LandingPage
+		if err := s.db.WithContext(ctx).First(&page, *input.HomeLandingPageID).Error; err != nil {
+			return model.Domain{}, ErrInvalidHomeLanding
+		}
+		// 活码/客服/卡密依赖具体链接上下文，不能直接作域名首页。
+		if page.Template != "custom" && page.Template != "redirect_notice" {
+			return model.Domain{}, ErrInvalidHomeLanding
+		}
+		id := page.ID
+		landingID = &id
+	}
+
+	current.HomeMode = mode
+	current.HomeRedirectURL = homeURL
+	current.HomeLandingPageID = landingID
+	return current, nil
+}
+
+func validHomeMode(mode string) bool {
+	switch mode {
+	case model.HomeModeDefault, model.HomeModeRedirect, model.HomeModeLanding:
+		return true
+	default:
+		return false
+	}
 }
 
 func validDomainHost(host string) bool {

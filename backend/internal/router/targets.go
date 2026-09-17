@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"gravitylink/backend/internal/middleware"
 	"gravitylink/backend/internal/model"
 	"gravitylink/backend/internal/response"
-	"strconv"
-	"strings"
-	"time"
+	"gravitylink/backend/internal/service"
 )
 
 type targetBatchInput struct {
@@ -238,6 +241,16 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 		} else {
 			t.WxRemark = nil
 		}
+		if t.ID == 0 && t.ExpireAt == nil {
+			uploadsDir := filepath.Join(filepath.Dir(deps.Config.ConfigFile), "uploads")
+			defaultDays := 7
+			if deps.Notifier != nil {
+				defaultDays = service.DefaultExpireDaysFromConfig(c.Request.Context(), deps.Notifier)
+			}
+			if exp, _ := service.SuggestExpireForTargetURL(c.Request.Context(), deps.DB, uploadsDir, t.TargetURL, defaultDays); exp != nil {
+				t.ExpireAt = exp
+			}
+		}
 		var saveErr error
 		if t.ID == 0 {
 			saveErr = deps.DB.Create(&t).Error
@@ -265,11 +278,24 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 			response.Error(c, 400, 4001, err.Error())
 			return
 		}
+		uploadsDir := filepath.Join(filepath.Dir(deps.Config.ConfigFile), "uploads")
+		defaultDays := 7
+		if deps.Notifier != nil {
+			defaultDays = service.DefaultExpireDaysFromConfig(c.Request.Context(), deps.Notifier)
+		}
 		items := make([]model.RoutingTarget, 0, len(in.URLs))
+		filled := 0
 		err := deps.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 			for i, raw := range in.URLs {
 				label := fmt.Sprintf("批量二维码 %d", i+1)
-				items = append(items, model.RoutingTarget{StrategyID: s.ID, Label: &label, TargetURL: strings.TrimSpace(raw), Weight: 1, ScanLimit: in.ScanLimit, Status: "active"})
+				t := model.RoutingTarget{StrategyID: s.ID, Label: &label, TargetURL: strings.TrimSpace(raw), Weight: 1, ScanLimit: in.ScanLimit, Status: "active"}
+				if exp, src := service.SuggestExpireForTargetURL(c.Request.Context(), tx, uploadsDir, t.TargetURL, defaultDays); exp != nil {
+					t.ExpireAt = exp
+					if src != "" && src != service.ExpireSourceNone {
+						filled++
+					}
+				}
+				items = append(items, t)
 			}
 			return tx.Create(&items).Error
 		})
@@ -277,6 +303,7 @@ func registerTargetRoutes(admin *gin.RouterGroup, deps Dependencies) {
 			response.Error(c, 500, 5000, "批量保存失败，未添加任何二维码")
 			return
 		}
-		response.OK(c, gin.H{"items": items, "total": len(items)})
+		hasNotify := deps.Notifier != nil && deps.Notifier.HasEnabledChannel(c.Request.Context())
+		response.OK(c, gin.H{"items": items, "total": len(items), "expire_filled": filled, "has_enabled_notify": hasNotify})
 	})
 }

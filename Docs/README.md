@@ -29,6 +29,7 @@
 | [features/landing-page.md](features/landing-page.md) | 落地页模板系统规格 | ✅ 完成 |
 | [features/statistics.md](features/statistics.md) | 统计系统规格 | ✅ 完成 |
 | [features/domain-management.md](features/domain-management.md) | 域名管理规格 | ✅ 完成 |
+| [features/notifications.md](features/notifications.md) | 通知渠道/模板/活码健康巡检/到期识别 | ✅ P1 已实现 |
 
 ## 运维与部署
 

@@ -238,6 +238,23 @@ func (s *LandingService) RenderByCode(ctx context.Context, code string) (string,
 	}
 }
 
+// RenderForHome 按域名首页配置渲染落地页（无链接上下文）。
+// 仅支持 custom / redirect_notice；redirect_notice 的目标 URL 取 fallbackTarget。
+func (s *LandingService) RenderForHome(ctx context.Context, pageID uint64, fallbackTarget string) (string, error) {
+	page, err := s.Get(ctx, pageID)
+	if err != nil {
+		return "", err
+	}
+	switch page.Template {
+	case "custom":
+		return s.renderCustomPage(page)
+	case "redirect_notice":
+		return s.renderNoticePage(page, fallbackTarget)
+	default:
+		return "", ErrInvalidTemplate
+	}
+}
+
 func landingFromInput(input LandingInput) (model.LandingPage, error) {
 	if !validTemplate(input.Template) {
 		return model.LandingPage{}, ErrInvalidTemplate
