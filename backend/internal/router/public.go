@@ -133,7 +133,10 @@ func registerLegacyRoutes(public *gin.RouterGroup, deps Dependencies, links *ser
 				html, status, linkID, rerr := landings.RenderByCode(c.Request.Context(), result.Link.Code)
 				if rerr != nil {
 					if errors.Is(rerr, service.ErrNoRoutingTarget) {
-						deps.Notifier.SendAsync("qr_exhausted:"+result.Link.Code, "⚠ 活码二维码已全部耗尽", "活码 "+result.Link.Code+" 的所有二维码达到阈值/到期/停用。")
+						deps.Notifier.NotifyAsync(service.EventLiveQRNoAvailable, "qr_exhausted:"+result.Link.Code, service.NotifyVars{
+							"LinkCode": result.Link.Code, "AvailableCount": "0", "TotalCount": "0",
+							"Reason": "阈值/到期/停用",
+						})
 					}
 					writeResolveError(c, rerr, pages)
 					return
@@ -204,7 +207,14 @@ func writeLegacyNotFound(c *gin.Context, pages *service.PublicPageService) {
 func publicHome(pages *service.PublicPageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Home 已在 HTML 内处理旧版 #base64 哈希与首页跳转，不再服务端 302。
-		html, status := pages.Home(c.Request.Context())
+		// HostRouter 已写入域名；按域名 home_mode 覆盖全局首页。
+		var domain *model.Domain
+		if v, ok := c.Get(middleware.ContextDomainKey); ok {
+			if d, ok := v.(model.Domain); ok {
+				domain = &d
+			}
+		}
+		html, status := pages.Home(c.Request.Context(), domain)
 		c.Data(status, "text/html; charset=utf-8", []byte(html))
 	}
 }
@@ -277,7 +287,10 @@ func dispatchByDomainType(deps Dependencies, links *service.LinkService, landing
 			if err != nil {
 				// P1：活码全部二维码耗尽时告警运营（Notifier 内置 1 小时防抖）
 				if errors.Is(err, service.ErrNoRoutingTarget) {
-					deps.Notifier.SendAsync("qr_exhausted:"+code, "⚠ 活码二维码已全部耗尽", "活码 "+code+" 的所有二维码达到阈值/到期/停用，访客正在看到「暂无可用群」页面，请尽快补充二维码。")
+					deps.Notifier.NotifyAsync(service.EventLiveQRNoAvailable, "qr_exhausted:"+code, service.NotifyVars{
+						"LinkCode": code, "AvailableCount": "0", "TotalCount": "0",
+						"Reason": "阈值/到期/停用",
+					})
 				}
 				writeResolveError(c, err, pages)
 				return

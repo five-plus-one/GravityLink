@@ -7,6 +7,12 @@ type Material struct {
 	Name      string `gorm:"size:255"`
 	Path      string `gorm:"size:255"`
 	CreatedAt time.Time
+	// 二维码识别（群活码过期估算）
+	QRContent         string     `gorm:"type:text"`
+	QRKind            string     `gorm:"size:32;not null;default:''"`
+	SuggestedExpireAt *time.Time
+	ExpireSource      string     `gorm:"size:32;not null;default:''"`
+	InspectedAt       *time.Time
 }
 
 type ShareCard struct {

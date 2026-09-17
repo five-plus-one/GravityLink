@@ -122,7 +122,22 @@ func registerContentRoutes(engine *gin.Engine, admin *gin.RouterGroup, deps Depe
 			fail(c)
 			return
 		}
-		response.OK(c, item)
+		// 上传成功后识别二维码，估算微信群码过期时间
+		if deps.Notifier != nil {
+			days := service.DefaultExpireDaysFromConfig(c.Request.Context(), deps.Notifier)
+			if _, err := service.InspectBytesAndSave(deps.DB, item.ID, b, days); err != nil {
+				// 识别失败不影响上传
+				_ = err
+			} else {
+				// 回读识别结果返回前端
+				_ = deps.DB.First(&item, item.ID).Error
+			}
+		}
+		response.OK(c, gin.H{
+			"ID": item.ID, "Name": item.Name, "Path": item.Path, "CreatedAt": item.CreatedAt,
+			"QRKind": item.QRKind, "SuggestedExpireAt": item.SuggestedExpireAt, "ExpireSource": item.ExpireSource,
+			"has_enabled_notify": deps.Notifier != nil && deps.Notifier.HasEnabledChannel(c.Request.Context()),
+		})
 	})
 	engine.GET("/uploads/:name", func(c *gin.Context) {
 		name := c.Param("name")
