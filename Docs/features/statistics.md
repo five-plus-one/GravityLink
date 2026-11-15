@@ -127,7 +127,8 @@ GET /api/v1/stats/window?...   # window 响应内 geo 字段同结构
 
 - `country`：按 `country` 列聚合，空值归为「未知」，用于世界地图着色与排行
 - `province`：仅统计 `country = '中国'` 且 `province` 非空的记录，用于中国地图着色与排行
-- 前端将国名/省名映射到 ECharts map GeoJSON 的 `name` 字段；「未知」与内网保留地址不上图
+- 前端将国名/省名映射到 ECharts map GeoJSON 的 
+ame` 字段；「未知」与内网保留地址不上图
 
 ### 设备分布
 
@@ -219,3 +220,8 @@ GET /api/v1/stats/window 接收带时区的 start/end 和可选 link_id，按左
 | 来源 | 来源应用、Referer 域名 TOP |
 
 地图资源本地化：`frontend/admin/public/maps/{world,china}.json`，国名/省名映射见 `geoNames.ts`。
+
+### 访问明细写入边界
+消费者按 Unicode 字符数限制地域、运营商、系统、浏览器和来源应用为64字符，来源地址为2048字符；超长描述保留前缀，来源应用随记录保存，兼容现有表结构。
+
+消费者通过 Redis 原子操作将待处理记录转入独立列表；成功入库后确认，失败和进程重启保留重试记录，新访问独立入队。
