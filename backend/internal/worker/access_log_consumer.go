@@ -40,7 +40,17 @@ func (c *AccessLogConsumer) Start(ctx context.Context) {
 }
 
 func (c *AccessLogConsumer) consumeBatch(ctx context.Context) error {
-	payloads, err := c.redis.LRange(ctx, service.AccessStreamKey, 0, 99).Result()
+	// Isolate the pending batch from concurrent LPUSH producers. A failed write
+	// stays in this durable processing list and is retried after restart.
+	processingKey := service.AccessStreamKey + ":processing"
+	if err := c.redis.Eval(ctx, `
+if redis.call('EXISTS', KEYS[2]) == 0 and redis.call('EXISTS', KEYS[1]) == 1 then
+ return redis.call('RENAME', KEYS[1], KEYS[2])
+end
+return 0`, []string{service.AccessStreamKey, processingKey}).Err(); err != nil {
+		return err
+	}
+	payloads, err := c.redis.LRange(ctx, processingKey, 0, 99).Result()
 	if err != nil {
 		return err
 	}
@@ -63,24 +73,25 @@ func (c *AccessLogConsumer) consumeBatch(ctx context.Context) error {
 			return err
 		}
 	}
-	return c.redis.LTrim(ctx, service.AccessStreamKey, int64(len(payloads)), -1).Err()
+	return c.redis.LTrim(ctx, processingKey, int64(len(payloads)), -1).Err()
 }
 
 func accessLogFromEvent(event service.AccessEvent) model.AccessLog {
-	referer := optionalLogString(event.Referer)
+	referer := boundedLogString(event.Referer, 2048)
 	info := service.ParseUserAgent(event.UserAgent)
 	return model.AccessLog{
 		LinkID:     event.LinkID,
 		VisitedAt:  event.VisitedAt,
 		IP:         event.IP,
-		Country:    optionalLogString(event.Country),
-		Province:   optionalLogString(event.Province),
-		City:       optionalLogString(event.City),
-		ISP:        optionalLogString(event.ISP),
+		Country:    boundedLogString(event.Country, 64),
+		Province:   boundedLogString(event.Province, 64),
+		City:       boundedLogString(event.City, 64),
+		ISP:        boundedLogString(event.ISP, 64),
 		Device:     info.Device,
-		OS:         optionalLogString(info.OS),
-		Browser:    optionalLogString(info.Browser),
+		OS:         boundedLogString(info.OS, 64),
+		Browser:    boundedLogString(info.Browser, 64),
 		Referer:    referer,
+		SourceApp:  boundedLogString(event.SourceApp, 64),
 		ViaTransit: event.ViaTransit,
 	}
 }
@@ -90,4 +101,12 @@ func optionalLogString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func boundedLogString(value string, limit int) *string {
+	chars := []rune(value)
+	if len(chars) > limit {
+		value = string(chars[:limit])
+	}
+	return optionalLogString(value)
 }
